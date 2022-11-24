@@ -97,8 +97,8 @@ if __name__ == '__main__':
 
     parser.add_argument(
         "--k",
-        type=complex,
-        default=1 + 0j,
+        type=float,
+        default=1,
         help="wavenumber",
     )
 
