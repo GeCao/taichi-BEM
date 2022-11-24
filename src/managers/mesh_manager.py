@@ -1,0 +1,437 @@
+import os
+import numpy as np
+from enum import Enum
+import math
+import taichi as ti
+import pywavefront
+
+
+class CellType(Enum):
+    DIRICHLET = 0
+    NEUMANN = 1
+    MIX = 2
+
+    def __int__(self):
+        return self.value
+
+
+class KernelType(Enum):
+    LAPLACE = 0
+    HELMHOLTZ = 1
+    
+    def __int__(self):
+        return self.value
+
+
+class PanelType(Enum):
+    SEPARATE = 0
+    COINCIDE = 1
+    COMMON_VERTEX = 2
+    COMMON_EDGE = 3
+    
+    def __int__(self):
+        return self.value
+
+
+@ti.data_oriented
+class MeshManager:
+    def __init__(self, core_manager):
+        self._core_manager = core_manager
+        self._log_manager = core_manager._log_manager
+
+        self._np_dtype = self._core_manager._np_dtype
+        self._ti_dtype = self._core_manager._ti_dtype
+        self._dim = self._core_manager._simulation_parameters['dim']
+        self._Q = self._dim
+
+        self._asset_path = os.path.join(self._core_manager.root_path, "assets")
+        self._object_path = os.path.join(
+            self._asset_path,
+            self._core_manager._simulation_parameters['object'] + '.obj'
+        )
+        self.vertices = None
+        self.panels = None
+        self.panel_areas = None
+        self.panel_areas_initialized = False
+        self.vert_areas = None
+        self.vert_areas_initialized = False
+        self.panel_normals = None
+        self.panel_normals_initialized = False
+        self.vert_normals = None
+        self.vert_normals_initialized = False
+        self.panel_types = None
+        self.Dirichlet_index = None
+        self.Neumann_index = None
+        self.panel_types_initialized = False
+
+        self.analyical_function_Dirichlet = None
+        self.analyical_function_Neumann = None
+
+        self.num_of_vertices = 0
+        self.num_of_panels = 0
+        self.num_of_Dirichlets = 0
+        self.num_of_Neumanns = 0
+
+        self.initialized = False
+    
+    def initialization(self, analyical_function_Dirichlet, analyical_function_Neumann):
+        if not self._core_manager._log_manager.initialized:
+            raise RuntimeError("The initialization of Log Manager has the first priority than others!")
+        
+        self._log_manager.InfoLog("====================================================================")
+        self._log_manager.InfoLog("Loading object from path {} started".format(str(self._object_path)))
+
+        np_vertices, np_faces = self.load_asset(scale=None, translate=None)
+        # np_vertices, np_faces = self.load_analytical_sphere()
+        np_faces = np_faces.flatten()
+
+        self.vertices = ti.Vector.field(
+            n=np_vertices.shape[1], dtype=self._ti_dtype, shape=(np_vertices.shape[0],)
+        )  # [NumOfVertices, dim]
+        self.panels = ti.field(
+            dtype=ti.i32, shape=(np_faces.shape[0],)
+        )  # [NumOfFaces * dim]
+        self.vertices.from_numpy(np_vertices)
+        self.panels.from_numpy(np_faces)
+        self.num_of_vertices = np_vertices.shape[0]
+        self.num_of_panels = np_faces.shape[0] // self._dim
+        self.panel_normals = ti.Vector.field(
+            n=self._dim, dtype=self._ti_dtype, shape=(self.num_of_panels,)
+        )  # [NUmOfFaces, dim]
+        self.vert_normals = ti.Vector.field(
+            n=self._dim, dtype=self._ti_dtype, shape=(self.num_of_vertices,)
+        )  # [NumOfVertices, dim]
+        if self._dim == 3:
+            self.panel_areas = ti.field(
+                dtype=self._ti_dtype, shape=(self.num_of_panels,)
+            )  # [NumOfFaces]
+            self.vert_areas = ti.field(
+                dtype=self._ti_dtype, shape=(self.num_of_vertices,)
+            )  # [NumOfVertices]
+            np_panel_areas = np.zeros(self.panel_areas.shape, dtype=self._np_dtype)
+            np_vert_areas = np.zeros(self.vert_areas.shape, dtype=self._np_dtype)
+            np_panel_normals = np.zeros((self.num_of_panels, self._dim), dtype=self._np_dtype)
+            np_vert_normals = np.zeros((self.num_of_vertices, self._dim), dtype=self._np_dtype)
+            for i in range(self.num_of_panels):
+                np_panel_areas[i] = 0.5 * np.linalg.norm(np.cross(
+                    np_vertices[np_faces[3 * i + 1]] - np_vertices[np_faces[3 * i + 0]],
+                    np_vertices[np_faces[3 * i + 2]] - np_vertices[np_faces[3 * i + 1]],
+                ))
+
+                np_panel_normals[i] = np.cross(
+                    np_vertices[np_faces[3 * i + 1]] - np_vertices[np_faces[3 * i + 0]],
+                    np_vertices[np_faces[3 * i + 2]] - np_vertices[np_faces[3 * i + 1]],
+                )
+                np_panel_normals[i] /= np.linalg.norm(np_panel_normals[i])
+            
+            for i in range(self.num_of_panels * self._dim):
+                np_vert_areas[np_faces[i]] += np_panel_areas[i // self._dim] / 3.0
+                np_vert_normals[np_faces[i]] += np_panel_normals[i // self._dim]
+            
+            for i in range(self.num_of_vertices):
+                np_vert_normals[i] = np_vert_normals[i] / np.linalg.norm(np_vert_normals[i])
+            
+            self.panel_areas.from_numpy(np_panel_areas)
+            self.vert_areas.from_numpy(np_vert_areas)
+            self.panel_normals.from_numpy(np_panel_normals)
+            self.vert_normals.from_numpy(np_vert_normals)
+            
+            self.panel_areas_initialized = True
+            self.vert_areas_initialized = True
+            self.panel_normals_initialized = True
+            self.vert_normals_initialized = True
+
+        self.panel_types = ti.field(
+            dtype=ti.i32, shape=(self.num_of_panels,)
+        )
+
+        self._log_manager.InfoLog("Loading object from path {} finished, "
+                                  "with vertices shape = {}, faces shape = {}".format(
+            str(self._object_path), np_vertices.shape, np_faces.shape)
+        )
+        self._log_manager.InfoLog("====================================================================")
+
+        # TODO: Default as Dirichlet Now, 
+        self.analyical_function_Dirichlet = analyical_function_Dirichlet
+        self.analyical_function_Neumann = analyical_function_Neumann
+        self.set_Dirichlet_bvp(analyical_function_Dirichlet)
+
+        self.initialized = True
+    
+    def set_Dirichlet_bvp(self, analyical_function_Dirichlet):
+        assert(self.num_of_panels == self.panel_types.shape[0])
+        self.num_of_Dirichlets = self.panel_types.shape[0]
+
+        np_panel_types = np.array(
+            [int(CellType.DIRICHLET) for i in range(self.num_of_Dirichlets)],
+            dtype=np.int32
+        )
+        self.panel_types.from_numpy(np_panel_types)
+        
+        self.panels_type_initialized = True
+
+        np_Dirichlet_index = np.array(
+            [i for i in range(self.num_of_panels)],
+            dtype=np.int32
+        )
+        self.Dirichlet_index = ti.field(
+            dtype=ti.i32, shape=(self.num_of_Dirichlets,)
+        )
+        self.Dirichlet_index.from_numpy(np_Dirichlet_index)
+
+        assert(self.num_of_Neumanns == 0)
+
+        self.Neumann_index = ti.field(
+            dtype=ti.i32, shape=(1,)
+        )
+    
+    def set_Neumann_bvp(self, analyical_function_Neumann):
+        self.Dirichlet_index = ti.field(
+            dtype=ti.i32, shape=(1,)
+        )
+
+        assert(self.num_of_panels == self.panel_types.shape[0])
+        self.num_of_Neumanns = self.panel_types.shape[0]
+
+        np_panel_types = np.array(
+            [int(CellType.NEUMANN) for i in range(self.num_of_Neumanns)],
+            dtype=np.int32
+        )
+        self.panel_types.from_numpy(np_panel_types)
+        
+        self.panels_type_initialized = True
+
+        assert(self.num_of_Dirichlets == 0)
+
+        np_Neumann_index = np.array(
+            [i for i in range(self.num_of_panels)],
+            dtype=np.int32
+        )
+        self.Neumann_index = ti.field(
+            dtype=ti.i32, shape=(self.num_of_Neumanns,)
+        )
+        self.Neumann_index.from_numpy(np_Neumann_index)
+
+    def set_mixed_bvp(self, analyical_function_Dirichlet, analyical_function_Neumann):
+        self.set_mixed_bvp_()
+
+        if self.num_of_Dirichlets > 0:
+            np_Dirichlet_index = np.array(
+                [i for i in range(self.num_of_panels)],
+                dtype=np.int32
+            )
+            np_Dirichlet_index = np_Dirichlet_index[self.panel_types == int(CellType.DIRICHLET)]
+            self.Dirichlet_index = ti.field(
+                dtype=ti.i32, shape=(self.num_of_Dirichlets,)
+            )
+            self.Dirichlet_index.from_numpy(np_Dirichlet_index)
+        else:
+            self.Dirichlet_index = ti.field(
+                dtype=ti.i32, shape=(1,)
+            )
+        
+        if self.num_of_Neumanns > 0:
+            np_Neumann_index = np.array(
+                [i for i in range(self.num_of_panels)],
+                dtype=np.int32
+            )
+            np_Neumann_index = np_Neumann_index[self.panel_types == int(CellType.NEUMANN)]
+            self.Neumann_index = ti.field(
+                dtype=ti.i32, shape=(self.num_of_Neumanns,)
+            )
+            self.Neumann_index.from_numpy(np_Neumann_index)
+        else:
+            self.Neumann_index = ti.field(
+                dtype=ti.i32, shape=(1,)
+            )
+
+    def set_mixed_bvp_(self):
+        pass
+
+    @ti.func
+    def map_local_Dirichlet_index_to_panel_index(self, i):
+        return self.Dirichlet_index[i] if self.num_of_Dirichlets > 0 else -1
+    
+    @ti.func
+    def map_local_Neumann_index_to_panel_index(self, i):
+        return self.Neumann_index[i] if self.num_of_Neumanns > 0 else -1
+
+    @ti.func
+    def get_panel_areas(self):
+        return self.panel_areas
+    
+    @ti.func
+    def get_vert_areas(self):
+        return self.vert_areas
+    
+    @ti.func
+    def get_vert_normals(self):
+        return self.vert_normals
+    
+    @ti.func
+    def get_panel_normals(self):
+        return self.panel_normals
+    
+    def load_asset(
+        self,
+        scale = None,
+        translate = None
+    ):
+        scene = pywavefront.Wavefront(self._object_path, collect_faces=True)
+        vertices = np.array(scene.vertices, dtype=self._np_dtype)
+        faces = np.array(scene.meshes[None].faces, dtype=np.int64)
+        if scale is not None:
+            vertices = vertices * scale
+        if translate is None:
+            translate = -vertices.mean(axis=0, keepdims=True)
+        vertices = vertices + translate
+        if scale is None:
+            vertices = vertices * (1.0 / np.abs(vertices).max())
+        return vertices, faces
+    
+    def load_analytical_sphere(self, r: float=1.0, rows: int=17, cols: int=17):
+        vertices = [[0.0, 0.0, -r]]
+        panels = []
+        for i in range(1, rows):
+            theta = math.pi * i / rows
+            for j in range(cols):
+                phi = 2.0 * math.pi * j / cols
+                vertices.append(
+                    [r * math.cos(phi) * math.sin(theta),
+                     r * math.sin(phi) * math.sin(theta),
+                     -r * math.cos(theta)]
+                )
+                if i == 1:
+                    panels.append([0, 1 + j, 1 + (j + 1) % cols])
+                else:
+                    panels.append([1 + (i - 2) * cols + j, 1 + (i - 2) * cols + (j + 1) % cols, 1 + (i - 1) * cols + j])
+                    panels.append([1 + (i - 2) * cols + (j + 1) % cols, 1 + (i - 1) * cols + j, 1 + (i - 1) * cols + (j + 1) % cols])
+        
+        vertices.append([0.0, 0.0, r])
+        for j in range(cols):
+            panels.append([1 + (rows - 2) * cols + j, 1 + (rows - 2) * cols + (j + 1) % cols, 1 + (rows - 1) * cols])
+        
+        return np.array(vertices, dtype=self._np_dtype), np.array(panels, dtype=np.int64)
+
+    def load_analytical_disk(self, r: float=1.0, N: int=128):
+        vertices = np.array(
+            [[r * math.cos(2.0 * math.pi * i / N) for i in range(N)], 
+             [r * math.sin(2.0 * math.pi * i / N) for i in range(N)]],
+            dtype=self._np_dtype
+        )
+        
+        panels = np.array(
+            [[i for i in range(N)],
+             [(i + 1) % N for i in range(N)]],
+            dtype=np.int64
+        )
+
+        return vertices, panels
+    
+    @ti.func
+    def get_panel_type(self, i, j) -> int:
+        panel_type = int(PanelType.SEPARATE)
+        if i == j:
+            panel_type = int(PanelType.COINCIDE)
+        else:
+            has_common_vertex = False
+            for ii in range(self._dim):
+                edge1_vert_idx1 = self.panels[self._dim * i + ii]
+                edge1_vert_idx2 = self.panels[self._dim * i + (ii + 1) % self._dim]
+                for jj in range(self._dim):
+                    edge2_vert_idx1 = self.panels[self._dim * j + jj]
+                    edge2_vert_idx2 = self.panels[self._dim * j + (jj + 1) % self._dim]
+
+                    if edge1_vert_idx1 == edge2_vert_idx1 and edge1_vert_idx2 == edge2_vert_idx2:
+                        panel_type = int(PanelType.COMMON_EDGE)
+                    
+                    if edge1_vert_idx1 == edge2_vert_idx2 and edge1_vert_idx2 == edge2_vert_idx1:
+                        panel_type = int(PanelType.COMMON_EDGE)
+                    
+                    if edge1_vert_idx1 == edge2_vert_idx1:
+                        has_common_vertex = True
+            
+            if has_common_vertex and not (panel_type == int(PanelType.COMMON_EDGE)):
+                panel_type = int(PanelType.COMMON_VERTEX)
+        
+        return panel_type
+    
+    # @ti.func
+    # def is_same_panel(self, i, j) -> bool:
+    #     return i == j
+    
+    # @ti.func
+    # def is_common_edge_panel(self, i, j) -> bool:
+    #     # if self.is_same_panel(i, j):
+    #     #     return False
+        
+    #     # if self._dim != 3:
+    #     #     raise RuntimeError("The only case where two panels share same edge is where dimension = 3")
+    #     result = False
+        
+    #     for ii in range(self._dim):
+    #         edge1_vert_idx1 = self.panels[self._dim * i + ii]
+    #         edge1_vert_idx2 = self.panels[self._dim * i + (ii + 1) % self._dim]
+    #         for jj in range(self._dim):
+    #             edge2_vert_idx1 = self.panels[self._dim * j + jj]
+    #             edge2_vert_idx2 = self.panels[self._dim * j + (jj + 1) % self._dim]
+
+    #             if edge1_vert_idx1 == edge2_vert_idx1 and edge1_vert_idx2 == edge2_vert_idx2:
+    #                 result = True
+                
+    #             if edge1_vert_idx1 == edge2_vert_idx2 and edge1_vert_idx2 == edge2_vert_idx1:
+    #                 result = True
+        
+    #     return result
+    
+    # @ti.func
+    # def is_common_vertex_panel(self, i, j) -> bool:
+    #     # if self.is_same_panel(i, j):
+    #     #     return False
+        
+    #     # if self._dim == 3:
+    #     #     if self.is_common_edge_panel(i, j):
+    #     #         return False
+    #     result = False
+    #     for ii in range(self._dim):
+    #         for jj in range(self._dim):
+    #             if self.panels[self._dim * i + ii] == self.panels[self._dim * j + jj]:
+    #                 result = True
+        
+    #     return result
+
+    # @ti.func
+    # def is_disjoint_panel(self, i, j) -> bool:
+    #     result = True
+    #     for ii in range(self._dim):
+    #         for jj in range(self._dim):
+    #             if self.panels[self._dim * i + ii] == self.panels[self._dim * j + jj]:
+    #                 result = False
+        
+    #     return result
+
+    @ti.kernel
+    def run_step(self):
+        pass
+
+    def kill(self):
+        self.initialized = False
+        self.vertices = None
+        self.panels = None
+        self.panel_areas = None
+        self.panel_areas_initialized = False
+        self.vert_areas = None
+        self.vert_areas_initialized = False
+        self.panel_normals = None
+        self.panel_normals_initialized = False
+        self.vert_normals = None
+        self.vert_normals_initialized = False
+        self.panel_types = None
+        self.Dirichlet_index = None
+        self.Neumann_index = None
+        self.panel_types_initialized = False
+
+        self.analyical_function_Dirichlet = None
+        self.analyical_function_Neumann = None
+
+        self._log_manager.ErrorLog("Kill the Mesh Manager")

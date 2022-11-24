@@ -1,0 +1,7 @@
+.vscode
+*.ini
+*/__pycache__/
+__pycache__/
+demo/data/
+build/
+log/
