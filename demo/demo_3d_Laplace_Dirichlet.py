@@ -41,7 +41,7 @@ def main(args):
     @ti.func
     def analytical_function_Dirichlet(x):
         # return (1 + x[1])
-        return (1 + x[0]) * ti.math.exp(2.0 * ti.math.pi * x[1]) * ti.math.cos(2.0 * ti.math.pi * x[2])
+        return ti.Vector([(1 + x[0]) * ti.math.exp(2.0 * ti.math.pi * x[1]) * ti.math.cos(2.0 * ti.math.pi * x[2])])
     
     @ti.func
     def analytical_function_Neumann(x, normal_x):
@@ -51,7 +51,7 @@ def main(args):
              -2.0 * ti.math.pi * (1 + x[0]) * ti.math.exp(2.0 * ti.math.pi * x[1]) * ti.math.sin(2.0 * ti.math.pi * x[2])]
         )
         # grad_u = ti.Vector([0.0, 1.0, 0.0])
-        return grad_u.dot(normal_x)
+        return ti.Vector([grad_u.dot(normal_x)])
     
     core_manager.initialization(
         analyical_function_Dirichlet=analytical_function_Dirichlet,
