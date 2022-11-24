@@ -4,9 +4,8 @@ import taichi as ti
 
 @ti.data_oriented
 class AbstractHypersingularLayer(ABC):
-    def __init__(self, BEM_manager, mesh_manager, *args, **kwargs,):
+    def __init__(self, BEM_manager, *args, **kwargs,):
         self._BEM_manager = BEM_manager
-        self._mesh_manager = mesh_manager
 
     @property
     @abstractmethod

@@ -24,6 +24,7 @@ class CoreManager:
         self.log_to_disk = self._simulation_parameters["log_to_disk"]
         self.make_video = self._simulation_parameters["make_video"]
         self.show_wireframe = self._simulation_parameters["show_wireframe"]
+        self.res = (1280, 640)
 
         self._log_manager = LogManager(self, self.log_to_disk)
         self._mesh_manager = MeshManager(self)
@@ -35,16 +36,16 @@ class CoreManager:
     
     def initialization(self, analyical_function_Dirichlet, analyical_function_Neumann):
         self._log_manager.initialization()
-        self._mesh_manager.initialization(analyical_function_Dirichlet, analyical_function_Neumann)
-        self._BEM_manager.initialization()
+        self._mesh_manager.initialization()
+        self._BEM_manager.initialization(analyical_function_Dirichlet, analyical_function_Neumann)
 
-        self.window = ti.ui.Window('BEM Example', res=(640, 640), pos=(150, 150), vsync=True)
+        self.window = ti.ui.Window('BEM Example: Left=Analytical, Right=Solved', res=self.res, pos=(150, 150), vsync=True)
         self.canvas = self.window.get_canvas()
         self.canvas.set_background_color((1.0, 1.0, 1.0))
         self.scene = ti.ui.Scene()
         self.camera = ti.ui.Camera()
-        self.camera.position(2.4, 1.6, 2.4)
-        self.camera.lookat(-1.0 / math.sqrt(2.0), 0.0, -1.0 / math.sqrt(2.0))
+        self.camera.position(5.4, 0.0, 0.0)
+        self.camera.lookat(0.0, 0.0, 0.0)
         self.camera.up(0.0, 1.0, 0.0)
 
         self.iteration = 0
@@ -56,18 +57,27 @@ class CoreManager:
         self._log_manager.InfoLog("BEM has finished running")
 
         while self.window.running:
-            self.camera.track_user_inputs(self.window, movement_speed=0.03, hold_key=ti.ui.RMB)
+            self.camera.track_user_inputs(self.window, movement_speed=0.03, hold_key=ti.ui.LMB)
             self.scene.set_camera(self.camera)
             self.scene.ambient_light((0.8, 0.8, 0.8))
             self.scene.point_light(pos=(0.5, 1.5, 1.5), color=(1, 1, 1))
 
             self.scene.mesh(
-                self._mesh_manager.vertices,
+                self._BEM_manager.solved_vertices,
                 self._mesh_manager.panels,
-                per_vertex_color=self._BEM_manager.vert_color,
+                per_vertex_color=self._BEM_manager.solved_vert_color,
                 two_sided=True,
-                show_wireframe=self.show_wireframe
+                show_wireframe=self.show_wireframe,
             )
+
+            self.scene.mesh(
+                self._BEM_manager.analytical_vertices,
+                self._mesh_manager.panels,
+                per_vertex_color=self._BEM_manager.analytical_vert_color,
+                two_sided=True,
+                show_wireframe=self.show_wireframe,
+            )
+
             self.canvas.scene(self.scene)
 
             if self.make_video:

@@ -24,10 +24,12 @@ def main(args):
     simulation_parameters = {
         'dim': args.dim,
         'object': args.object,
+        'GaussQR': args.GaussQR,
         'n_i': args.n_i,
         'n_o': args.n_o,
         'k': args.k,
         'kernel': args.kernel,
+        'boundary': args.boundary,
         'log_to_disk': args.log_to_disk,
         'make_video': args.make_video,
         'show_wireframe': args.show_wireframe,
@@ -92,6 +94,13 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
+        "--GaussQR",
+        type=int,
+        default=7,
+        help="Gauss QR number",
+    )
+
+    parser.add_argument(
         "--n_i",
         type=int,
         default=1,
@@ -117,6 +126,14 @@ if __name__ == '__main__':
         type=str,
         default="Helmholtz",
         choices=["Laplace", "Helmholtz"],
+        help="Do we need a video for visualization?",
+    )
+
+    parser.add_argument(
+        "--boundary",
+        type=str,
+        default="Neumann",
+        choices=["Dirichlet", "Neumann", "Mix"],
         help="Do we need a video for visualization?",
     )
 

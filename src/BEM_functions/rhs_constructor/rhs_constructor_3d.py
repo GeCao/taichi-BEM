@@ -3,49 +3,48 @@ import numpy as np
 
 from src.BEM_functions.rhs_constructor import AbstractRHSConstructor
 from src.BEM_functions.utils import get_gaussion_integration_points_and_weights
-from src.managers.mesh_manager import CellType, KernelType, PanelType
+from src.managers.mesh_manager import CellType, KernelType, PanelsRelation
 
 
 @ti.data_oriented
 class RHSConstructor3d(AbstractRHSConstructor):
     rank = 3
 
-    def __init__(self, BEM_manager, mesh_manager, *args, **kwargs,):
-        super(RHSConstructor3d, self).__init__(BEM_manager, mesh_manager, *args, **kwargs)
+    def __init__(self, BEM_manager, *args, **kwargs,):
+        super(RHSConstructor3d, self).__init__(BEM_manager, *args, **kwargs)
 
         self._GaussQR = self._BEM_manager._GaussQR
-        self._Q = self._mesh_manager._Q  # Number of local shape functions
+        self._Q = self._BEM_manager._Q  # Number of local shape functions
 
-        self._ti_dtype = self._mesh_manager._ti_dtype
-        self._np_dtype = self._mesh_manager._np_dtype
+        self._ti_dtype = self._BEM_manager._ti_dtype
+        self._np_dtype = self._BEM_manager._np_dtype
         self._kernel_type = self._BEM_manager._kernel_type
         self._k = self._BEM_manager._k
+        self._n = self._BEM_manager._n
 
-        self.num_of_panels = self._mesh_manager.num_of_panels
-        self.num_of_vertices = self._mesh_manager.num_of_vertices
-        self.num_of_Dirichlets = self._mesh_manager.num_of_Dirichlets
-        self.num_of_Neumanns = self._mesh_manager.num_of_Neumanns
-        self.analyical_function_Dirichlet = self._mesh_manager.analyical_function_Dirichlet
-        self.analyical_function_Neumann = self._mesh_manager.analyical_function_Neumann
-        self._vert_g_boundary = ti.field(dtype=self._ti_dtype, shape=(self.num_of_vertices,))
-        self._vert_f_boundary = ti.field(dtype=self._ti_dtype, shape=(self.num_of_vertices,))
+        self.num_of_Dirichlets = self._BEM_manager.get_num_of_Dirichlets()
+        self.num_of_Neumanns = self._BEM_manager.get_num_of_Neumanns()
+        self.num_of_vertices = self._BEM_manager.get_num_of_vertices()
+        self.num_of_panels = self._BEM_manager.get_num_of_panels()
+        self.analyical_function_Dirichlet = self._BEM_manager.analyical_function_Dirichlet
+        self.analyical_function_Neumann = self._BEM_manager.analyical_function_Neumann
+        self._vert_g_boundary = ti.Vector.field(self._n, dtype=self._ti_dtype, shape=(self.num_of_vertices,))
+        self._vert_f_boundary = ti.Vector.field(self._n, dtype=self._ti_dtype, shape=(self.num_of_vertices,))
         self._set_boundaries()
         self._gvec = None
         if self.num_of_Dirichlets > 0:
-            self._gvec = ti.field(
+            self._gvec = ti.Vector.field(
+                self._n,
                 dtype=self._ti_dtype,
                 shape=(self.num_of_Dirichlets * self._Q,)
             )
         self._fvec = None
         if self.num_of_Neumanns > 0:
-            self._fvec = ti.field(
+            self._fvec = ti.Vector.field(
+                self._n,
                 dtype=self._ti_dtype,
                 shape=(self.num_of_Neumanns * self._Q,)
             )
-        self._rhs_vec = ti.field(
-            dtype=self._ti_dtype,
-            shape=(self.num_of_panels * self._Q,)
-        )
 
         self.m_mats_coincide = ti.Matrix.field(4, 4, dtype=self._ti_dtype, shape=(3,))
         np_m_mats_coincide = np.array(
@@ -77,7 +76,7 @@ class RHSConstructor3d(AbstractRHSConstructor):
         self.Gauss_weights_1d = ti.field(self._ti_dtype, shape=(self._GaussQR, ))
         np_Gauss_points_1d, np_Gauss_weights_1d = get_gaussion_integration_points_and_weights(
             N=self._GaussQR,
-            np_type=self._mesh_manager._np_dtype
+            np_type=self._np_dtype
         )
         self.Gauss_points_1d.from_numpy(np_Gauss_points_1d)
         self.Gauss_weights_1d.from_numpy(np_Gauss_weights_1d)
@@ -85,9 +84,9 @@ class RHSConstructor3d(AbstractRHSConstructor):
     @ti.kernel
     def _set_boundaries(self):
         for i in range(self.num_of_vertices):
-            self._vert_g_boundary[i] = self.analyical_function_Dirichlet(self._mesh_manager.vertices[i])
+            self._vert_g_boundary[i] = self.analyical_function_Dirichlet(self._BEM_manager.get_vertice(i))
             # TODO:
-            self._vert_f_boundary[i] = 0.0  # self.analyical_function_Neumann(self._mesh_manager.vertices[i], self._mesh_manager.vert_normals[i])
+            self._vert_f_boundary[i] = 0 * self._vert_f_boundary[i]  # self.analyical_function_Neumann(self._BEM_manager.get_vertice(i), self._BEM_manager.get_vert_normal(i))
     
     @ti.func
     def get_g_vec(self):
@@ -184,43 +183,16 @@ class RHSConstructor3d(AbstractRHSConstructor):
     
     @ti.func
     def G(self, x, y):
-        Gxy = 0.0
+        Gxy = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
         if ti.static(self._kernel_type == int(KernelType.LAPLACE)):
-            Gxy = (1.0 / 4.0 / ti.math.pi) / (x - y).norm()
+            Gxy.x = (1.0 / 4.0 / ti.math.pi) / (x - y).norm()
         elif ti.static(self._kernel_type == int(KernelType.HELMHOLTZ)):
             distance = (x - y).norm()
-            temp_complex_number = self._k * distance * 1j  # Please make sure k is a complex
             Gxy = (1.0 / 4.0 / ti.math.pi) / distance * ti.math.cexp(
-                ti.Vector([temp_complex_number.x, temp_complex_number.y], self._ti_dtype)
+                ti.Vector([0.0, self._k * distance], self._ti_dtype)
             )
         
         return Gxy
-    
-    @ti.func
-    def grad_G_y(self, x, y, normal_y):
-        grad_Gy = 0.0
-        if ti.static(self._kernel_type == int(KernelType.LAPLACE)):
-            # A float number will be returned finally
-            grad_Gy = (1.0 / 4.0 / ti.math.pi) * (x - y).dot(normal_y) / ti.math.pow((x - y).norm(), 3)
-        elif ti.static(self._kernel_type == int(KernelType.HELMHOLTZ)):
-            # A 2d Vector will be returned finally, as the distinction of Rel & Img part
-            distance = (x - y).norm()
-            temp_complex_number = self._k * distance * 1j  # Please make sure k is a complex
-            exp_vector = ti.math.cexp(
-                ti.Vector([temp_complex_number.x, temp_complex_number.y], self._ti_dtype)
-            )
-            exp_number = exp_vector.x + exp_vector.y * 1j
-            chained_complex_number = exp_number * (1 - self._k * distance * 1j)
-            chained_complex_vector = ti.Vector(
-                [chained_complex_number.x, chained_complex_number.y], self._ti_dtype
-            )
-            grad_Gy = (1.0 / 4.0 / ti.math.pi) * distance.dot(normal_y) / ti.math.pow(distance.norm(), 3) * chained_complex_vector
-        
-        return grad_Gy
-    
-    @ti.func
-    def grad2_G_xy(self, x, y, curl_phix, curl_phiy):
-        return (1.0 / 4.0 / ti.math.pi) / (x - y).norm() * (curl_phix.dot(curl_phiy))
     
     @ti.func
     def integrate_on_single_triangle(
@@ -257,13 +229,15 @@ class RHSConstructor3d(AbstractRHSConstructor):
          - If we choose (0, 0)->x1, (1, 0)->x2, (1, 1)->x3
          - x (r1, r2) = (1 - r1) * x1 + (r1 - r2) * x2 + r2 * x3
         """
-        integrand = 0.0
+        integrand = ti.Vector([0.0 for i in range(self._n)])
 
-        x1 = self._mesh_manager.vertices[self._mesh_manager.panels[3 * triangle_x + 0]]
-        x2 = self._mesh_manager.vertices[self._mesh_manager.panels[3 * triangle_x + 1]]
-        x3 = self._mesh_manager.vertices[self._mesh_manager.panels[3 * triangle_x + 2]]
-        normal_x = self._mesh_manager.get_panel_normals()[triangle_x]
-        area_x = self._mesh_manager.get_panel_areas()[triangle_x]
+        x1 = self._BEM_manager.get_vertice_from_flat_panel_index(3 * triangle_x + 0)
+        x2 = self._BEM_manager.get_vertice_from_flat_panel_index(3 * triangle_x + 1)
+        x3 = self._BEM_manager.get_vertice_from_flat_panel_index(3 * triangle_x + 2)
+        area_x = self._BEM_manager.get_panel_area(triangle_x)
+        normal_x = self._BEM_manager.get_panel_normal(triangle_x)
+
+        vec_type = self._BEM_manager.get_panel_type(triangle_x)
         
         for iii in range(self._GaussQR * self._GaussQR):
             # Generate number(r1, r2)
@@ -271,7 +245,7 @@ class RHSConstructor3d(AbstractRHSConstructor):
             r2_x = self.Gauss_points_1d[iii % self._GaussQR] * r1_x
 
             # Scale your weight
-            weight_x = self.Gauss_weights_1d[iii // self._GaussQR] * self.Gauss_weights_1d[iii % self._GaussQR] * area_x * 2.0
+            weight_x = self.Gauss_weights_1d[iii // self._GaussQR] * self.Gauss_weights_1d[iii % self._GaussQR] * (area_x * 2.0)
 
             # Get your final weight
             weight = weight_x
@@ -281,21 +255,17 @@ class RHSConstructor3d(AbstractRHSConstructor):
             )
             jacobian = r1_x
             if vec_type == int(CellType.DIRICHLET):
-                if self._mesh_manager.panel_types[triangle_x] == int(CellType.DIRICHLET):
-                    gx = self.analyical_function_Dirichlet(x)
-                    integrand += 0.5 * (
-                        gx * self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                    ) * weight * jacobian
-                else:
-                    print("The Cell type should only be Dirichlet")
+                gx = self.analyical_function_Dirichlet(x)
+                integrand += 0.5 * (
+                    gx * self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+                ) * weight * jacobian
             elif vec_type == int(CellType.NEUMANN):
-                if self._mesh_manager.panel_types[triangle_x] == int(CellType.NEUMANN):
-                    fx = self.analyical_function_Neumann(x, normal_x)
-                    integrand += 0.5 * (
-                        fx * self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                    ) * weight * jacobian
-                else:
-                    print("The Cell type should only be Neumann")
+                fx = self.analyical_function_Neumann(x, normal_x)
+                integrand += 0.5 * (
+                    fx * self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+                ) * weight * jacobian
+            else:
+                print("The Cell type should only be Dirichlet or Neumann")
         
         return integrand
     
@@ -320,7 +290,7 @@ class RHSConstructor3d(AbstractRHSConstructor):
             )
         
             for I in self._gvec:
-                i = self._mesh_manager.map_local_Dirichlet_index_to_panel_index(I // self._Q)
+                i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(I // self._Q)
                 ii = I % self._Q
 
                 self._gvec[I] += self.integrate_on_single_triangle(
@@ -340,7 +310,7 @@ class RHSConstructor3d(AbstractRHSConstructor):
             )
 
             for I in self._fvec:
-                i = self._mesh_manager.map_local_Neumann_index_to_panel_index(I // self._Q)
+                i = self._BEM_manager.map_local_Neumann_index_to_panel_index(I // self._Q)
                 ii = I % self._Q
 
                 self._fvec[I] += self.integrate_on_single_triangle(

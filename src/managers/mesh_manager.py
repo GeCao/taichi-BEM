@@ -23,7 +23,7 @@ class KernelType(Enum):
         return self.value
 
 
-class PanelType(Enum):
+class PanelsRelation(Enum):
     SEPARATE = 0
     COINCIDE = 1
     COMMON_VERTEX = 2
@@ -42,7 +42,6 @@ class MeshManager:
         self._np_dtype = self._core_manager._np_dtype
         self._ti_dtype = self._core_manager._ti_dtype
         self._dim = self._core_manager._simulation_parameters['dim']
-        self._Q = self._dim
 
         self._asset_path = os.path.join(self._core_manager.root_path, "assets")
         self._object_path = os.path.join(
@@ -64,9 +63,6 @@ class MeshManager:
         self.Neumann_index = None
         self.panel_types_initialized = False
 
-        self.analyical_function_Dirichlet = None
-        self.analyical_function_Neumann = None
-
         self.num_of_vertices = 0
         self.num_of_panels = 0
         self.num_of_Dirichlets = 0
@@ -74,7 +70,7 @@ class MeshManager:
 
         self.initialized = False
     
-    def initialization(self, analyical_function_Dirichlet, analyical_function_Neumann):
+    def initialization(self):
         if not self._core_manager._log_manager.initialized:
             raise RuntimeError("The initialization of Log Manager has the first priority than others!")
         
@@ -152,13 +148,11 @@ class MeshManager:
         self._log_manager.InfoLog("====================================================================")
 
         # TODO: Default as Dirichlet Now, 
-        self.analyical_function_Dirichlet = analyical_function_Dirichlet
-        self.analyical_function_Neumann = analyical_function_Neumann
-        self.set_Dirichlet_bvp(analyical_function_Dirichlet)
+        self.set_Dirichlet_bvp()
 
         self.initialized = True
     
-    def set_Dirichlet_bvp(self, analyical_function_Dirichlet):
+    def set_Dirichlet_bvp(self):
         assert(self.num_of_panels == self.panel_types.shape[0])
         self.num_of_Dirichlets = self.panel_types.shape[0]
 
@@ -185,7 +179,7 @@ class MeshManager:
             dtype=ti.i32, shape=(1,)
         )
     
-    def set_Neumann_bvp(self, analyical_function_Neumann):
+    def set_Neumann_bvp(self):
         self.Dirichlet_index = ti.field(
             dtype=ti.i32, shape=(1,)
         )
@@ -212,7 +206,7 @@ class MeshManager:
         )
         self.Neumann_index.from_numpy(np_Neumann_index)
 
-    def set_mixed_bvp(self, analyical_function_Dirichlet, analyical_function_Neumann):
+    def set_mixed_bvp(self):
         self.set_mixed_bvp_()
 
         if self.num_of_Dirichlets > 0:
@@ -248,6 +242,18 @@ class MeshManager:
     def set_mixed_bvp_(self):
         pass
 
+    def get_num_of_vertices(self):
+        return self.num_of_vertices
+    
+    def get_num_of_panels(self):
+        return self.num_of_panels
+
+    def get_num_of_Dirichlets(self):
+        return self.num_of_Dirichlets
+    
+    def get_num_of_Neumanns(self):
+        return self.num_of_Neumanns
+
     @ti.func
     def map_local_Dirichlet_index_to_panel_index(self, i):
         return self.Dirichlet_index[i] if self.num_of_Dirichlets > 0 else -1
@@ -255,6 +261,14 @@ class MeshManager:
     @ti.func
     def map_local_Neumann_index_to_panel_index(self, i):
         return self.Neumann_index[i] if self.num_of_Neumanns > 0 else -1
+    
+    @ti.func
+    def get_vertices(self):
+        return self.vertices
+
+    @ti.func
+    def get_panels(self):
+        return self.panels
 
     @ti.func
     def get_panel_areas(self):
@@ -271,6 +285,10 @@ class MeshManager:
     @ti.func
     def get_panel_normals(self):
         return self.panel_normals
+    
+    @ti.func
+    def get_panel_types(self):
+        return self.panel_types
     
     def load_asset(
         self,
@@ -329,10 +347,10 @@ class MeshManager:
         return vertices, panels
     
     @ti.func
-    def get_panel_type(self, i, j) -> int:
-        panel_type = int(PanelType.SEPARATE)
+    def get_panels_relation(self, i, j) -> int:
+        panel_relation = int(PanelsRelation.SEPARATE)
         if i == j:
-            panel_type = int(PanelType.COINCIDE)
+            panel_relation = int(PanelsRelation.COINCIDE)
         else:
             has_common_vertex = False
             for ii in range(self._dim):
@@ -343,73 +361,19 @@ class MeshManager:
                     edge2_vert_idx2 = self.panels[self._dim * j + (jj + 1) % self._dim]
 
                     if edge1_vert_idx1 == edge2_vert_idx1 and edge1_vert_idx2 == edge2_vert_idx2:
-                        panel_type = int(PanelType.COMMON_EDGE)
+                        panel_relation = int(PanelsRelation.COMMON_EDGE)
                     
                     if edge1_vert_idx1 == edge2_vert_idx2 and edge1_vert_idx2 == edge2_vert_idx1:
-                        panel_type = int(PanelType.COMMON_EDGE)
+                        panel_relation = int(PanelsRelation.COMMON_EDGE)
                     
                     if edge1_vert_idx1 == edge2_vert_idx1:
                         has_common_vertex = True
             
-            if has_common_vertex and not (panel_type == int(PanelType.COMMON_EDGE)):
-                panel_type = int(PanelType.COMMON_VERTEX)
+            if has_common_vertex and not (panel_relation == int(PanelsRelation.COMMON_EDGE)):
+                panel_relation = int(PanelsRelation.COMMON_VERTEX)
         
-        return panel_type
+        return panel_relation
     
-    # @ti.func
-    # def is_same_panel(self, i, j) -> bool:
-    #     return i == j
-    
-    # @ti.func
-    # def is_common_edge_panel(self, i, j) -> bool:
-    #     # if self.is_same_panel(i, j):
-    #     #     return False
-        
-    #     # if self._dim != 3:
-    #     #     raise RuntimeError("The only case where two panels share same edge is where dimension = 3")
-    #     result = False
-        
-    #     for ii in range(self._dim):
-    #         edge1_vert_idx1 = self.panels[self._dim * i + ii]
-    #         edge1_vert_idx2 = self.panels[self._dim * i + (ii + 1) % self._dim]
-    #         for jj in range(self._dim):
-    #             edge2_vert_idx1 = self.panels[self._dim * j + jj]
-    #             edge2_vert_idx2 = self.panels[self._dim * j + (jj + 1) % self._dim]
-
-    #             if edge1_vert_idx1 == edge2_vert_idx1 and edge1_vert_idx2 == edge2_vert_idx2:
-    #                 result = True
-                
-    #             if edge1_vert_idx1 == edge2_vert_idx2 and edge1_vert_idx2 == edge2_vert_idx1:
-    #                 result = True
-        
-    #     return result
-    
-    # @ti.func
-    # def is_common_vertex_panel(self, i, j) -> bool:
-    #     # if self.is_same_panel(i, j):
-    #     #     return False
-        
-    #     # if self._dim == 3:
-    #     #     if self.is_common_edge_panel(i, j):
-    #     #         return False
-    #     result = False
-    #     for ii in range(self._dim):
-    #         for jj in range(self._dim):
-    #             if self.panels[self._dim * i + ii] == self.panels[self._dim * j + jj]:
-    #                 result = True
-        
-    #     return result
-
-    # @ti.func
-    # def is_disjoint_panel(self, i, j) -> bool:
-    #     result = True
-    #     for ii in range(self._dim):
-    #         for jj in range(self._dim):
-    #             if self.panels[self._dim * i + ii] == self.panels[self._dim * j + jj]:
-    #                 result = False
-        
-    #     return result
-
     @ti.kernel
     def run_step(self):
         pass
@@ -430,8 +394,5 @@ class MeshManager:
         self.Dirichlet_index = None
         self.Neumann_index = None
         self.panel_types_initialized = False
-
-        self.analyical_function_Dirichlet = None
-        self.analyical_function_Neumann = None
 
         self._log_manager.ErrorLog("Kill the Mesh Manager")
