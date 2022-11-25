@@ -8,7 +8,8 @@ from src.BEM_functions.double_layer import DoubleLayer2d, DoubleLayer3d
 from src.BEM_functions.adj_double_layer import AdjDoubleLayer2d, AdjDoubleLayer3d
 from src.BEM_functions.hypersingular_layer import HypersingularLayer2d, HypersingularLayer3d
 from src.BEM_functions.rhs_constructor import RHSConstructor3d
-from src.managers.mesh_manager import KernelType
+from src.managers.mesh_manager import KernelType, CellType
+from src.BEM_functions.utils import get_gaussion_integration_points_and_weights
 
 
 @ti.data_oriented
@@ -20,6 +21,7 @@ class BEMManager:
         self._np_dtype = self._core_manager._np_dtype
         self._ti_dtype = self._core_manager._ti_dtype
         self._kernel_type = int(KernelType.LAPLACE)
+        self._boundary = int(CellType.DIRICHLET)
 
         self._simulation_parameters = self._core_manager._simulation_parameters
         if self._simulation_parameters["kernel"] == "Laplace":
@@ -30,6 +32,15 @@ class BEMManager:
             self._n = 2
         else:
             raise RuntimeError("Kernel Type only support Laplace and Helmholtz for now")
+        
+        if self._simulation_parameters["boundary"] == "Dirichlet":
+            self._boundary = int(CellType.DIRICHLET)
+        elif self._simulation_parameters["boundary"] == "Neumann":
+            self._boundary = int(CellType.NEUMANN)
+        elif self._simulation_parameters["boundary"] == "Mix":
+            self._boundary = int(CellType.MIX)
+        else:
+            raise RuntimeError("Boundary Type only support DIrichlet/Neumann/Mix for now")
         
         self._k = self._simulation_parameters["k"]
         
@@ -63,10 +74,46 @@ class BEMManager:
         self.mat_A = ti.Vector.field(self._n, self._ti_dtype, shape=(self.num_of_panels * self._dim, self.num_of_panels * self._dim))
         self.rhs = ti.Vector.field(self._n, self._ti_dtype, shape=(self.num_of_panels * self._dim, ))
 
-        self.solved_vert_color = ti.Vector.field(self._dim, self._ti_dtype, shape=(self.num_of_vertices, ))
-        self.solved_vertices = ti.Vector.field(self._dim, self._ti_dtype, shape=(self.num_of_vertices, ))
-        self.analytical_vert_color = ti.Vector.field(self._dim, self._ti_dtype, shape=(self.num_of_vertices, ))
-        self.analytical_vertices = ti.Vector.field(self._dim, self._ti_dtype, shape=(self.num_of_vertices, ))
+        self.solved_vert_color = ti.Vector.field(self._dim, ti.f32, shape=(self.num_of_vertices, ))
+        self.solved_vertices = ti.Vector.field(self._dim, ti.f32, shape=(self.num_of_vertices, ))
+        self.analytical_vert_color = ti.Vector.field(self._dim, ti.f32, shape=(self.num_of_vertices, ))
+        self.analytical_vertices = ti.Vector.field(self._dim, ti.f32, shape=(self.num_of_vertices, ))
+        self.diff_vert_color = ti.Vector.field(self._dim, ti.f32, shape=(self.num_of_vertices, ))
+        self.diff_vertices = ti.Vector.field(self._dim, ti.f32, shape=(self.num_of_vertices, ))
+
+        self.m_mats_coincide = ti.Matrix.field(4, 4, dtype=self._ti_dtype, shape=(3,))
+        np_m_mats_coincide = np.array(
+            [
+                [
+                    [1.0, 0.0, 0.0, 0.0],
+                    [1.0, -1.0, 1.0, 0.0],
+                    [0.0, 0.0, 0.0, 1.0],
+                    [0.0, 0.0, 1.0, 0.0]
+                ],
+                [
+                    [1.0, 0.0, 0.0, 0.0],
+                    [0.0, 1.0, -1.0, 1.0],
+                    [0.0, 0.0, 1.0, 0.0],
+                    [0.0, 0.0, 0.0, 1.0]
+                ],
+                [
+                    [1.0, 0.0, 0.0, -1.0],
+                    [0.0, 1.0, 0.0, -1.0],
+                    [0.0, 0.0, 0.0, -1.0],
+                    [0.0, 0.0, 1.0, -1.0]
+                ],
+            ],
+            dtype=self._np_dtype
+        )
+        self.m_mats_coincide.from_numpy(np_m_mats_coincide)
+        self.Gauss_points_1d = ti.field(self._ti_dtype, shape=(self._GaussQR, ))
+        self.Gauss_weights_1d = ti.field(self._ti_dtype, shape=(self._GaussQR, ))
+        np_Gauss_points_1d, np_Gauss_weights_1d = get_gaussion_integration_points_and_weights(
+            N=self._GaussQR,
+            np_type=self._np_dtype
+        )
+        self.Gauss_points_1d.from_numpy(np_Gauss_points_1d)
+        self.Gauss_weights_1d.from_numpy(np_Gauss_weights_1d)
         self.default_ones = ti.field(dtype=self._ti_dtype, shape=(self.num_of_vertices))
         np_default_ones = np.array([1.0 for i in range(self.num_of_vertices)], dtype=self._np_dtype)
         self.default_ones.from_numpy(np_default_ones)
@@ -122,7 +169,11 @@ class BEMManager:
 
     @ti.func
     def get_vert_normal(self, vert_index):
-        return self._core_manager._mesh_manager.normals[vert_index]
+        return self._core_manager._mesh_manager.get_vert_normals()[vert_index]
+    
+    @ti.func
+    def get_vert_area(self, vert_index):
+        return self._core_manager._mesh_manager.get_vert_areas()[vert_index]
     
     @ti.func
     def map_local_Dirichlet_index_to_panel_index(self, local_index):
@@ -139,6 +190,47 @@ class BEMManager:
     @ti.func
     def get_panel_type(self, panel_index):
         return self._core_manager._mesh_manager.get_panel_types()[panel_index]
+    
+    @ti.func
+    def G(self, x, y):
+        Gxy = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+        distance = (x - y).norm()
+        if ti.static(self._kernel_type == int(KernelType.LAPLACE)):
+            Gxy.x = (1.0 / 4.0 / ti.math.pi) / distance
+        elif ti.static(self._kernel_type == int(KernelType.HELMHOLTZ)):
+            Gxy = (1.0 / 4.0 / ti.math.pi) / distance * ti.math.cexp(
+                ti.Vector([0.0, self._k * distance], self._ti_dtype)
+            )
+        
+        return Gxy
+    
+    @ti.func
+    def grad_G_y(self, x, y, normal_y):
+        grad_Gy = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+        distance = (x - y).norm()
+        if ti.static(self._kernel_type == int(KernelType.LAPLACE)):
+            grad_Gy.x = (1.0 / 4.0 / ti.math.pi) * (x - y).dot(normal_y) / ti.math.pow(distance, 3)
+        elif ti.static(self._kernel_type == int(KernelType.HELMHOLTZ)):
+            chained_complex_vector = ti.math._complex.cmul(
+                ti.Vector([1.0, -self._k * distance], self._ti_dtype),
+                ti.math.cexp(ti.Vector([0.0, self._k * distance], self._ti_dtype))
+            )
+            grad_Gy = (1.0 / 4.0 / ti.math.pi) * (x - y).dot(normal_y) / ti.math.pow(distance, 3) * chained_complex_vector
+        
+        return grad_Gy
+    
+    @ti.func
+    def grad2_G_xy(self, x, y, curl_phix, curl_phiy):
+        result = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+        distance = (x - y).norm()
+        if ti.static(self._kernel_type == int(KernelType.LAPLACE)):
+            result.x = (1.0 / 4.0 / ti.math.pi) / distance * (curl_phix.dot(curl_phiy))
+        elif ti.static(self._kernel_type == int(KernelType.HELMHOLTZ)):
+            exp_vector = ti.math.cexp(
+                ti.Vector([0.0, self._k * distance], self._ti_dtype)
+            )
+            result = (1.0 / 4.0 / ti.math.pi) / distance * (curl_phix.dot(curl_phiy)) * exp_vector
+        return result
     
     @ti.kernel
     def compute_color(self):
@@ -163,43 +255,44 @@ class BEMManager:
                 if max_solved < self.solved[I].norm():
                     max_solved = self.solved[I].norm()
         
+        for I in self.solved:
+            self.diff_vert_color[I].y = (self.solved[I] - self.analytical_solved[I]).norm()
+        
         for I in self.solved_vert_color:
             self.solved_vert_color[I] /= max_solved
         
         for I in self.analytical_vert_color:
             self.analytical_vert_color[I] /= max_solved
         
+        for I in self.diff_vert_color:
+            self.diff_vert_color[I] /= max_solved
+        
         for I in self.solved_vertices:
             self.analytical_vertices[I] = self.get_vertice(I)
-            self.analytical_vertices[I].z += 1.8
+            self.analytical_vertices[I].z += 2.2
 
             self.solved_vertices[I] = self.get_vertice(I)
-            self.solved_vertices[I].z -= 1.8
+
+            self.diff_vertices[I] = self.get_vertice(I)
+            self.diff_vertices[I].z -= 2.2
             
     @ti.kernel
     def splat_u_from_panels_to_vertices(self):
-        for I in self.solved:
-            self.solved[I] = 0 * self.solved[I]
+        self.solved.fill(0)
         
         if ti.static(self._dim == 3):
             GaussQR2 = self._GaussQR * self._GaussQR       
             for I in self.panels_solved:
                 i = I // self._dim
                 ii = I % self._dim
-                x1 = self._core_manager._mesh_manager.vertices[self._core_manager._mesh_manager.panels[i * self._dim + 0]]
-                x2 = self._core_manager._mesh_manager.vertices[self._core_manager._mesh_manager.panels[i * self._dim + 1]]
-                x3 = self._core_manager._mesh_manager.vertices[self._core_manager._mesh_manager.panels[i * self._dim + 2]]
-                area = self._core_manager._mesh_manager.get_panel_areas()[i]
+                area_x = self.get_panel_area(i)
                 for iii in range(GaussQR2):
-                    r1 = self.rhs_constructor.Gauss_points_1d[iii // self._GaussQR]
-                    r2 = self.rhs_constructor.Gauss_points_1d[iii % self._GaussQR] * r1
+                    r1 = self.Gauss_points_1d[iii // self._GaussQR]
+                    r2 = self.Gauss_points_1d[iii % self._GaussQR] * r1
 
-                    weight = self.rhs_constructor.Gauss_weights_1d[iii // self._GaussQR] * self.rhs_constructor.Gauss_weights_1d[iii % self._GaussQR] * (area * 2.0)
+                    weight = self.Gauss_weights_1d[iii // self._GaussQR] * self.Gauss_weights_1d[iii % self._GaussQR] * (area_x * 2.0)
 
-                    x = self.rhs_constructor.interplate_from_unit_triangle_to_general(
-                        r1=r1, r2=r2, x1=x1, x2=x2, x3=x3
-                    )
-                    vert_index = self._core_manager._mesh_manager.panels[I]
+                    vert_index = self.get_vertice_index_from_flat_panel_index(I)
                     jacobian = r1
 
                     self.solved[vert_index] += (
@@ -207,26 +300,61 @@ class BEMManager:
                     ) * weight * jacobian
             
             for I in self.solved:
-                self.solved[I] /= self._core_manager._mesh_manager.get_vert_areas()[I]
+                self.solved[I] /= self.get_vert_area(I)
 
     @ti.kernel
     def assmeble(self):
-        for I, J in self.mat_A:
-            self.mat_A[I, J] = self.single_layer._Vmat[I, J]
+        if ti.static(self.num_of_Dirichlets > 0):
+            for I, J in self.single_layer._Vmat:
+                global_I = self.map_local_Dirichlet_index_to_panel_index(I // self._dim) * self._dim + I % self._dim
+                global_J = self.map_local_Dirichlet_index_to_panel_index(J // self._dim) * self._dim + J % self._dim
+                self.mat_A[global_I, global_J] = self.single_layer._Vmat[I, J]
         
-        if ti.static(self.rhs_constructor.num_of_Dirichlets > 0):
-            for I in range(self.rhs_constructor.num_of_Dirichlets * self.rhs_constructor._Q):
-                self.rhs[I] = self.rhs_constructor._gvec[I]
-                x = self._core_manager._mesh_manager.vertices[I]
-                normal_x = self._core_manager._mesh_manager.get_vert_normals()[I]
-                self.analytical_solved[I] = self.rhs_constructor.analyical_function_Neumann(x, normal_x)
+        if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
+            for I, J in self.double_layer._Kmat:
+                global_I = self.map_local_Dirichlet_index_to_panel_index(I // self._dim) * self._dim + I % self._dim
+                global_J = self.map_local_Neumann_index_to_panel_index(J // self._dim) * self._dim + J % self._dim
+                self.mat_A[global_I, global_J] = -self.double_layer._Kmat[I, J]
         
-        offset = self.rhs_constructor.num_of_Dirichlets * self.rhs_constructor._Q
-        if ti.static(self.rhs_constructor.num_of_Neumanns > 0):
-            for I in range(self.rhs_constructor.num_of_Neumanns * self.rhs_constructor._Q):
-                self.rhs[I + offset] = self.rhs_constructor._fvec[I]
-                x = self._core_manager._mesh_manager.vertices[I]
-                self.analytical_solved[I + offset] = self.rhs_constructor.analyical_function_Dirichlet(x)
+        if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
+            for I, J in self.adj_double_layer._Kmat:
+                global_I = self.map_local_Neumann_index_to_panel_index(I // self._dim) * self._dim + I % self._dim
+                global_J = self.map_local_Dirichlet_index_to_panel_index(J // self._dim) * self._dim + J % self._dim
+                self.mat_A[global_I, global_J] = self.adj_double_layer._Kmat[I, J]
+        
+        if ti.static(self.num_of_Neumanns > 0):
+            for I, J in self.hypersingular_layer._Wmat:
+                global_I = self.map_local_Neumann_index_to_panel_index(I // self._dim) * self._dim + I % self._dim
+                global_J = self.map_local_Neumann_index_to_panel_index(J // self._dim) * self._dim + J % self._dim
+                self.mat_A[global_I, global_J] = -self.hypersingular_layer._Wmat[I, J]
+        
+        if ti.static(self.num_of_Dirichlets > 0):
+            for I in self.rhs_constructor._gvec:
+                global_I = self.map_local_Dirichlet_index_to_panel_index(I // self._dim) * self._dim + I % self._dim
+                self.rhs[global_I] = self.rhs_constructor._gvec[I]
+
+                vert_index = self.get_vertice_index_from_flat_panel_index(global_I)
+                x1 = self.get_vertice_from_flat_panel_index(self._dim * (global_I // self._dim) + 0)
+                x2 = self.get_vertice_from_flat_panel_index(self._dim * (global_I // self._dim) + 1)
+                x3 = self.get_vertice_from_flat_panel_index(self._dim * (global_I // self._dim) + 2)
+                x = (x1 + x2 + x3) / 3.0
+                normal_x = self.get_panel_normal(global_I // self._dim)
+                self.analytical_solved[vert_index] += self.rhs_constructor.analyical_function_Neumann(x, normal_x) * self.get_panel_area(global_I // self._dim) / 3.0
+        
+        if ti.static(self.num_of_Neumanns > 0):
+            for I in self.rhs_constructor._fvec:
+                global_I = self.map_local_Neumann_index_to_panel_index(I // self._dim) * self._dim + I % self._dim
+                self.rhs[global_I] = self.rhs_constructor._fvec[I]
+
+                vert_index = self.get_vertice_index_from_flat_panel_index(global_I)
+                x1 = self.get_vertice_from_flat_panel_index(self._dim * (global_I // self._dim) + 0)
+                x2 = self.get_vertice_from_flat_panel_index(self._dim * (global_I // self._dim) + 1)
+                x3 = self.get_vertice_from_flat_panel_index(self._dim * (global_I // self._dim) + 2)
+                x = (x1 + x2 + x3) / 3.0
+                self.analytical_solved[vert_index] += self.rhs_constructor.analyical_function_Dirichlet(x) * self.get_panel_area(global_I // self._dim) / 3.0
+        
+        for I in self.analytical_solved:
+            self.analytical_solved[I] /= self.get_vert_area(I)
 
     @ti.kernel
     def Jacobian_solver(self) -> float:
@@ -253,6 +381,8 @@ class BEMManager:
         self.single_layer.forward()
         self._log_manager.InfoLog("Construct Double Layer")
         self.double_layer.forward()
+        self._log_manager.InfoLog("Construct Adj Double Layer")
+        self.adj_double_layer.forward()
         self._log_manager.InfoLog("Construct HyperSingular Layer")
         self.hypersingular_layer.forward()
         self._log_manager.InfoLog("Construct RHS Layer")
@@ -294,6 +424,16 @@ class BEMManager:
         print("analytical sovle min = {}, max = {}, mean = {}".format(
             np.min(np.linalg.norm(np_analytical_solved, axis=-1)), np.max(np.linalg.norm(np_analytical_solved, axis=-1)), np.mean(np.linalg.norm(np_analytical_solved, axis=-1)))
         )
+        print("rhs min = {}, max = {}, mean = {}".format(
+            np.min(np.linalg.norm(np_rhs, axis=-1)), np.max(np.linalg.norm(np_rhs, axis=-1)), np.mean(np.linalg.norm(np_rhs, axis=-1)))
+        )
+        print("mat_A min = {}, max = {}, mean = {}".format(
+            np.min(np.linalg.norm(np_mat_A, axis=-1)), np.max(np.linalg.norm(np_mat_A, axis=-1)), np.mean(np.linalg.norm(np_mat_A, axis=-1)))
+        )
+        print("matA ")
+        print(np_mat_A[0, 0], ', ', np_mat_A[0, 1], ', ', np_mat_A[0, 2])
+        print(np_mat_A[1, 0], ', ', np_mat_A[1, 1], ', ', np_mat_A[1, 2])
+        print(np_mat_A[2, 0], ', ', np_mat_A[2, 1], ', ', np_mat_A[2, 2])
         residual = np.mean(np.abs(np_solved))
         if self._core_manager.iteration <= 15:
             self._log_manager.InfoLog("residual = {}".format(residual))

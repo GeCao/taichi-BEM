@@ -19,12 +19,14 @@ class CoreManager:
         print("The data path of our project: ", self.data_path)
 
         self._simulation_parameters = simulation_parameters
+        if self._simulation_parameters['kernel'] != "Helmholtz":
+            self._simulation_parameters['k'] = 0
         self._np_dtype = np.float32
         self._ti_dtype = ti.f32
         self.log_to_disk = self._simulation_parameters["log_to_disk"]
         self.make_video = self._simulation_parameters["make_video"]
         self.show_wireframe = self._simulation_parameters["show_wireframe"]
-        self.res = (1280, 640)
+        self.res = (1920, 640)
 
         self._log_manager = LogManager(self, self.log_to_disk)
         self._mesh_manager = MeshManager(self)
@@ -74,6 +76,14 @@ class CoreManager:
                 self._BEM_manager.analytical_vertices,
                 self._mesh_manager.panels,
                 per_vertex_color=self._BEM_manager.analytical_vert_color,
+                two_sided=True,
+                show_wireframe=self.show_wireframe,
+            )
+
+            self.scene.mesh(
+                self._BEM_manager.diff_vertices,
+                self._mesh_manager.panels,
+                per_vertex_color=self._BEM_manager.diff_vert_color,
                 two_sided=True,
                 show_wireframe=self.show_wireframe,
             )

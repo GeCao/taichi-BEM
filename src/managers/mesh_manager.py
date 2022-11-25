@@ -42,6 +42,7 @@ class MeshManager:
         self._np_dtype = self._core_manager._np_dtype
         self._ti_dtype = self._core_manager._ti_dtype
         self._dim = self._core_manager._simulation_parameters['dim']
+        self._boundary_type = self._core_manager._simulation_parameters['boundary']
 
         self._asset_path = os.path.join(self._core_manager.root_path, "assets")
         self._object_path = os.path.join(
@@ -147,100 +148,85 @@ class MeshManager:
         )
         self._log_manager.InfoLog("====================================================================")
 
-        # TODO: Default as Dirichlet Now, 
-        self.set_Dirichlet_bvp()
+        if self._boundary_type == 'Dirichlet':
+            self.set_Dirichlet_bvp()
+        elif self._boundary_type == 'Neumann':
+            self.set_Neumann_bvp()
+        elif self._boundary_type == "Mix":
+            self.set_mixed_bvp()
+        else:
+            raise RuntimeError("The Boundary Type can only be Dirichlet/Neumann/Mix")
 
         self.initialized = True
     
     def set_Dirichlet_bvp(self):
         assert(self.num_of_panels == self.panel_types.shape[0])
         self.num_of_Dirichlets = self.panel_types.shape[0]
+        self.num_of_Neumanns = 0
 
-        np_panel_types = np.array(
-            [int(CellType.DIRICHLET) for i in range(self.num_of_Dirichlets)],
-            dtype=np.int32
-        )
-        self.panel_types.from_numpy(np_panel_types)
-        
-        self.panels_type_initialized = True
+        self.panel_types.fill(int(CellType.DIRICHLET))
+        self.panel_types_initialized = True
 
-        np_Dirichlet_index = np.array(
-            [i for i in range(self.num_of_panels)],
-            dtype=np.int32
-        )
-        self.Dirichlet_index = ti.field(
-            dtype=ti.i32, shape=(self.num_of_Dirichlets,)
-        )
+        np_Dirichlet_index = np.array([i for i in range(self.num_of_panels)], dtype=np.int32)
+        self.Dirichlet_index = ti.field(dtype=ti.i32, shape=(self.num_of_Dirichlets,))
         self.Dirichlet_index.from_numpy(np_Dirichlet_index)
 
         assert(self.num_of_Neumanns == 0)
 
-        self.Neumann_index = ti.field(
-            dtype=ti.i32, shape=(1,)
-        )
+        self.Neumann_index = ti.field(dtype=ti.i32, shape=())
     
     def set_Neumann_bvp(self):
-        self.Dirichlet_index = ti.field(
-            dtype=ti.i32, shape=(1,)
-        )
-
         assert(self.num_of_panels == self.panel_types.shape[0])
+        self.num_of_Dirichlets = 0
         self.num_of_Neumanns = self.panel_types.shape[0]
 
-        np_panel_types = np.array(
-            [int(CellType.NEUMANN) for i in range(self.num_of_Neumanns)],
-            dtype=np.int32
-        )
-        self.panel_types.from_numpy(np_panel_types)
-        
-        self.panels_type_initialized = True
+        self.panel_types.fill(int(CellType.NEUMANN))
+        self.panel_types_initialized = True
 
-        assert(self.num_of_Dirichlets == 0)
-
-        np_Neumann_index = np.array(
-            [i for i in range(self.num_of_panels)],
-            dtype=np.int32
-        )
-        self.Neumann_index = ti.field(
-            dtype=ti.i32, shape=(self.num_of_Neumanns,)
-        )
+        np_Neumann_index = np.array([i for i in range(self.num_of_panels)], dtype=np.int32)
+        self.Neumann_index = ti.field(dtype=ti.i32, shape=(self.num_of_Neumanns,))
         self.Neumann_index.from_numpy(np_Neumann_index)
 
+        self.Dirichlet_index = ti.field(dtype=ti.i32, shape=())
+
     def set_mixed_bvp(self):
-        self.set_mixed_bvp_()
-
-        if self.num_of_Dirichlets > 0:
-            np_Dirichlet_index = np.array(
-                [i for i in range(self.num_of_panels)],
-                dtype=np.int32
-            )
-            np_Dirichlet_index = np_Dirichlet_index[self.panel_types == int(CellType.DIRICHLET)]
-            self.Dirichlet_index = ti.field(
-                dtype=ti.i32, shape=(self.num_of_Dirichlets,)
-            )
-            self.Dirichlet_index.from_numpy(np_Dirichlet_index)
-        else:
-            self.Dirichlet_index = ti.field(
-                dtype=ti.i32, shape=(1,)
-            )
+        """
+        As default, Divide the whole region as:
+        Dirichlet boundary if y > 0
+        Neumann boundary if y <= 0
+        """
+        assert(self.num_of_panels == self.panel_types.shape[0])
+        self.num_of_Dirichlets = 0
+        self.num_of_Neumanns = 0
+        np_panel_types = np.array(
+            [0 for i in range(self.num_of_panels)], dtype=np.int32
+        )
+        for i in range(self.num_of_panels):
+            x = 0.0
+            for j in range(self._dim):
+                idx = self.panels[self._dim * i + j]
+                xj = self.vertices[idx].y
+                x += xj
+            
+            x /= self._dim
+            if x > 0:
+                self.num_of_Dirichlets += 1
+                np_panel_types[i] = int(CellType.DIRICHLET)
+            else:
+                self.num_of_Neumanns += 1
+                np_panel_types[i] = int(CellType.NEUMANN)
         
-        if self.num_of_Neumanns > 0:
-            np_Neumann_index = np.array(
-                [i for i in range(self.num_of_panels)],
-                dtype=np.int32
-            )
-            np_Neumann_index = np_Neumann_index[self.panel_types == int(CellType.NEUMANN)]
-            self.Neumann_index = ti.field(
-                dtype=ti.i32, shape=(self.num_of_Neumanns,)
-            )
-            self.Neumann_index.from_numpy(np_Neumann_index)
-        else:
-            self.Neumann_index = ti.field(
-                dtype=ti.i32, shape=(1,)
-            )
+        assert(self.num_of_Dirichlets + self.num_of_Neumanns == self.num_of_panels)
+        self.panel_types.from_numpy(np_panel_types)
+        self.panel_types_initialized = True
 
-    def set_mixed_bvp_(self):
-        pass
+        np_hlp_indices = np.array([i for i in range(self.num_of_panels)], dtype=np.int32)
+        np_Dirichlet_index = np_hlp_indices[np_panel_types == int(CellType.DIRICHLET)]
+        np_Neumann_index = np_hlp_indices[np_panel_types == int(CellType.NEUMANN)]
+        self.Dirichlet_index = ti.field(dtype=ti.i32, shape=(self.num_of_Dirichlets,))
+        self.Neumann_index = ti.field(dtype=ti.i32, shape=(self.num_of_Neumanns,))
+        self.Dirichlet_index.from_numpy(np_Dirichlet_index)
+        self.Neumann_index.from_numpy(np_Neumann_index)
 
     def get_num_of_vertices(self):
         return self.num_of_vertices
@@ -256,11 +242,17 @@ class MeshManager:
 
     @ti.func
     def map_local_Dirichlet_index_to_panel_index(self, i):
-        return self.Dirichlet_index[i] if self.num_of_Dirichlets > 0 else -1
+        result = -1
+        if ti.static(self.num_of_Dirichlets > 0):
+            result = self.Dirichlet_index[i]
+        return result
     
     @ti.func
     def map_local_Neumann_index_to_panel_index(self, i):
-        return self.Neumann_index[i] if self.num_of_Neumanns > 0 else -1
+        result = -1
+        if ti.static(self.num_of_Neumanns > 0):
+            result = self.Neumann_index[i]
+        return result
     
     @ti.func
     def get_vertices(self):

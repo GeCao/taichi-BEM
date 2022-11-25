@@ -15,7 +15,7 @@
 cd taichi-BEM
 pip install -r requirements.txt
 cd demo
-python demo_3d_Laplace_Dirichlet.py
+python demo_3d_Laplace.py --boundary Dirichlet
 ```
 
 
