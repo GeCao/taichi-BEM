@@ -1,11 +1,11 @@
 """
 This is a demo for validation of BEM solver.
-A Laplace equation is solved, with Dirichelt boundary applies.
+A Helmoholtz equation is solved, with Dirichelt boundary applies.
 The boundary value is given with analytical solution.
 Please refer this specific problem from book: 
 
     Sergej Rjasanow and Olaf Steinbach. 2007. The fast solution of boundary integral equations. Springer Science & Business Media
-    equation 4.13 on Page 143
+    equation 4.32 on Page 169
 
 """
 import sys, os
@@ -39,21 +39,31 @@ def main(args):
 
     # BVP problem for Dirichlet Problem
     # Laplacian(u) = 0,
-    # With u(x) = (1 + x1)exp(2π x2)cos(2π x3) as the analytical result.
+    # With u(x) = (a1 + b1x1)(a2 + b2x2)exp(ıκx3) as the analytical result.
     @ti.func
     def analytical_function_Dirichlet(x):
-        # return (1 + x[1])
-        return ti.Vector([(1 + x[0]) * ti.math.exp(2.0 * ti.math.pi * x[1]) * ti.math.cos(2.0 * ti.math.pi * x[2])])
+        a1 = 0.5
+        b1 = 0.5
+        a2 = 0.5
+        b2 = 0.5
+        k = args.k
+        expd_vec = ti.math.cexp(ti.Vector([0.0, x[2] * k]))
+        vec_result = (a1 + b1 * x[0]) * (a2 + b2 * x[1]) * expd_vec
+        return vec_result
     
     @ti.func
     def analytical_function_Neumann(x, normal_x):
-        grad_u = ti.Vector(
-            [ti.math.exp(2.0 * ti.math.pi * x[1]) * ti.math.cos(2.0 * ti.math.pi * x[2]),
-             2.0 * ti.math.pi * (1 + x[0]) * ti.math.exp(2.0 * ti.math.pi * x[1]) * ti.math.cos(2.0 * ti.math.pi * x[2]),
-             -2.0 * ti.math.pi * (1 + x[0]) * ti.math.exp(2.0 * ti.math.pi * x[1]) * ti.math.sin(2.0 * ti.math.pi * x[2])]
-        )
-        # grad_u = ti.Vector([0.0, 1.0, 0.0])
-        return ti.Vector([grad_u.dot(normal_x)])
+        a1 = 0.5
+        b1 = 0.5
+        a2 = 0.5
+        b2 = 0.5
+        k = args.k
+        expd_vec = ti.math.cexp(ti.Vector([0.0, x[2] * k]))
+        du_dx1 = b1 * (a2 + b2 * x[1]) * expd_vec
+        du_dx2 = (a1 + b1 * x[0]) * b2 * expd_vec
+        du_dx3 = (a1 + b1 * x[0]) * (a2 + b2 * x[1]) * ti.Vector([-expd_vec.y, expd_vec.x]) * k
+        vec_result = du_dx1 * normal_x.x + du_dx2 * normal_x.y + du_dx3 * normal_x.z
+        return vec_result
     
     core_manager.initialization(
         analyical_function_Dirichlet=analytical_function_Dirichlet,
@@ -86,7 +96,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--GaussQR",
         type=int,
-        default=7,
+        default=3,
         help="Gauss QR number",
     )
 
@@ -107,16 +117,8 @@ if __name__ == '__main__':
     parser.add_argument(
         "--k",
         type=float,
-        default=1,
+        default=19.5,
         help="wavenumber",
-    )
-
-    parser.add_argument(
-        "--kernel",
-        type=str,
-        default="Laplace",
-        choices=["Laplace", "Helmholtz"],
-        help="Do we need a video for visualization?",
     )
 
     parser.add_argument(
@@ -124,6 +126,14 @@ if __name__ == '__main__':
         type=str,
         default="Dirichlet",
         choices=["Dirichlet", "Neumann", "Mix"],
+        help="Do we need a video for visualization?",
+    )
+
+    parser.add_argument(
+        "--kernel",
+        type=str,
+        default="Helmholtz",
+        choices=["Laplace", "Helmholtz"],
         help="Do we need a video for visualization?",
     )
 
@@ -144,7 +154,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--show_wireframe",
         type=bool,
-        default=True,
+        default=False,
         help="Do we need a video for visualization?",
     )
 
