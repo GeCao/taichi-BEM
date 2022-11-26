@@ -8,7 +8,7 @@ from src.BEM_functions.double_layer import DoubleLayer2d, DoubleLayer3d
 from src.BEM_functions.adj_double_layer import AdjDoubleLayer2d, AdjDoubleLayer3d
 from src.BEM_functions.hypersingular_layer import HypersingularLayer2d, HypersingularLayer3d
 from src.BEM_functions.rhs_constructor import RHSConstructor3d
-from src.managers.mesh_manager import KernelType, CellType
+from src.managers.mesh_manager import KernelType, CellFluxType
 from src.BEM_functions.utils import get_gaussion_integration_points_and_weights
 
 
@@ -21,7 +21,7 @@ class BEMManager:
         self._np_dtype = self._core_manager._np_dtype
         self._ti_dtype = self._core_manager._ti_dtype
         self._kernel_type = int(KernelType.LAPLACE)
-        self._boundary = int(CellType.DIRICHLET)
+        self._boundary = int(CellFluxType.TOBESOLVED)
 
         self._simulation_parameters = self._core_manager._simulation_parameters
         if self._simulation_parameters["kernel"] == "Laplace":
@@ -34,11 +34,11 @@ class BEMManager:
             raise RuntimeError("Kernel Type only support Laplace and Helmholtz for now")
         
         if self._simulation_parameters["boundary"] == "Dirichlet":
-            self._boundary = int(CellType.DIRICHLET)
+            self._boundary = int(CellFluxType.TOBESOLVED)
         elif self._simulation_parameters["boundary"] == "Neumann":
-            self._boundary = int(CellType.NEUMANN)
+            self._boundary = int(CellFluxType.NEUMANN_KNOWN)
         elif self._simulation_parameters["boundary"] == "Mix":
-            self._boundary = int(CellType.MIX)
+            self._boundary = int(CellFluxType.MIX)
         else:
             raise RuntimeError("Boundary Type only support DIrichlet/Neumann/Mix for now")
         
@@ -68,12 +68,20 @@ class BEMManager:
         self.analyical_function_Dirichlet = analyical_function_Dirichlet
         self.analyical_function_Neumann = analyical_function_Neumann
 
+        # For final comparision
         self.solved = ti.Vector.field(self._n, self._ti_dtype, shape=(self.num_of_vertices, ))
         self.analytical_solved = ti.Vector.field(self._n, self._ti_dtype, shape=(self.num_of_vertices, ))
-        self.panels_solved = ti.Vector.field(self._n, self._ti_dtype, shape=(self.num_of_panels * self._dim, ))
-        self.mat_A = ti.Vector.field(self._n, self._ti_dtype, shape=(self.num_of_panels * self._dim, self.num_of_panels * self._dim))
-        self.rhs = ti.Vector.field(self._n, self._ti_dtype, shape=(self.num_of_panels * self._dim, ))
 
+        # The final global Ax=rhs
+        self.raw_solved = ti.Vector.field(self._n, self._ti_dtype, shape=(self.num_of_Dirichlets + self.num_of_Neumanns, ))
+        self.mat_A = ti.Vector.field(
+            self._n,
+            self._ti_dtype,
+            shape=(self.num_of_Dirichlets + self.num_of_Neumanns, self.num_of_Dirichlets + self.num_of_Neumanns)
+        )
+        self.rhs = ti.Vector.field(self._n, self._ti_dtype, shape=(self.num_of_Dirichlets + self.num_of_Neumanns, ))
+
+        # For visualization
         self.solved_vert_color = ti.Vector.field(self._dim, ti.f32, shape=(self.num_of_vertices, ))
         self.solved_vertices = ti.Vector.field(self._dim, ti.f32, shape=(self.num_of_vertices, ))
         self.analytical_vert_color = ti.Vector.field(self._dim, ti.f32, shape=(self.num_of_vertices, ))
@@ -81,6 +89,7 @@ class BEMManager:
         self.diff_vert_color = ti.Vector.field(self._dim, ti.f32, shape=(self.num_of_vertices, ))
         self.diff_vertices = ti.Vector.field(self._dim, ti.f32, shape=(self.num_of_vertices, ))
 
+        # For numerical integrations
         self.m_mats_coincide = ti.Matrix.field(4, 4, dtype=self._ti_dtype, shape=(3,))
         np_m_mats_coincide = np.array(
             [
@@ -114,9 +123,14 @@ class BEMManager:
         )
         self.Gauss_points_1d.from_numpy(np_Gauss_points_1d)
         self.Gauss_weights_1d.from_numpy(np_Gauss_weights_1d)
-        self.default_ones = ti.field(dtype=self._ti_dtype, shape=(self.num_of_vertices))
-        np_default_ones = np.array([1.0 for i in range(self.num_of_vertices)], dtype=self._np_dtype)
-        self.default_ones.from_numpy(np_default_ones)
+        self.default_panel_ones = ti.field(dtype=self._ti_dtype, shape=(self.num_of_panels))
+        np_default_panel_ones = np.array([1.0 for i in range(self.num_of_panels)], dtype=self._np_dtype)
+        self.default_panel_ones.from_numpy(np_default_panel_ones)
+        self.default_vert_ones = ti.field(dtype=self._ti_dtype, shape=(self.num_of_vertices))
+        np_default_vert_ones = np.array([1.0 for i in range(self.num_of_vertices)], dtype=self._np_dtype)
+        self.default_vert_ones.from_numpy(np_default_vert_ones)
+
+        # Prepare BIOs
         if self._dim == 2:
             self.single_layer = SingleLayer2d(self)
             self.double_layer = DoubleLayer2d(self)
@@ -184,12 +198,30 @@ class BEMManager:
         return self._core_manager._mesh_manager.map_local_Neumann_index_to_panel_index(local_index)
     
     @ti.func
+    def map_global_vert_index_to_local_Neumann(self, vert_index):
+        return self._core_manager._mesh_manager.map_global_vert_index_to_local_Neumann(vert_index)
+    
+    @ti.func
     def get_panels_relation(self, i, j):
         return self._core_manager._mesh_manager.get_panels_relation(i, j)
     
     @ti.func
     def get_panel_type(self, panel_index):
         return self._core_manager._mesh_manager.get_panel_types()[panel_index]
+    
+    @ti.func
+    def shape_function(self, r1, r2, i: int):
+        """
+        Providing x (r1, r2) = (1 - r1) * x1 + (r1 - r2) * x2 + r2 * x3
+        """
+        result = 1.0  # Default as 1 to cancel shape function term
+        if i == 0:
+            result = 1 - r1
+        elif i == 1:
+            result = r1 - r2
+        elif i == 2:
+            result = r2
+        return result
     
     @ti.func
     def G(self, x, y):
@@ -220,52 +252,56 @@ class BEMManager:
         return grad_Gy
     
     @ti.func
-    def grad2_G_xy(self, x, y, curl_phix, curl_phiy):
+    def grad2_G_xy(self, x, y, curl_phix_dot_curl_phiy):
         result = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
         distance = (x - y).norm()
         if ti.static(self._kernel_type == int(KernelType.LAPLACE)):
-            result.x = (1.0 / 4.0 / ti.math.pi) / distance * (curl_phix.dot(curl_phiy))
+            result = (1.0 / 4.0 / ti.math.pi) / distance * curl_phix_dot_curl_phiy
         elif ti.static(self._kernel_type == int(KernelType.HELMHOLTZ)):
             exp_vector = ti.math.cexp(
                 ti.Vector([0.0, self._k * distance], self._ti_dtype)
             )
-            result = (1.0 / 4.0 / ti.math.pi) / distance * (curl_phix.dot(curl_phiy)) * exp_vector
+            result = (1.0 / 4.0 / ti.math.pi) / distance * curl_phix_dot_curl_phiy * exp_vector
         return result
     
     @ti.kernel
     def compute_color(self):
-        max_solved = -66666.0
+        max_analytical = -66666.0
+
+        mean_analytical = 0.0 * self.analytical_solved[0]
+        mean_solved = 0.0 * self.solved[0]
+
         for I in self.analytical_solved:
             if self.analytical_solved[I].x > 0:
                 self.analytical_vert_color[I].x = self.analytical_solved[I].norm()
-                if max_solved < self.analytical_solved[I].norm():
-                    max_solved = self.analytical_solved[I].norm()
             else:
                 self.analytical_vert_color[I].z = self.analytical_solved[I].norm()
-                if max_solved < self.analytical_solved[I].norm():
-                    max_solved = self.analytical_solved[I].norm()
+            
+            if max_analytical < self.analytical_solved[I].norm():
+                max_analytical = self.analytical_solved[I].norm()
+            
+            mean_analytical += self.analytical_solved[I] / self.num_of_vertices
         
+        for I in self.solved:
+            mean_solved += self.solved[I] / self.num_of_vertices
+                    
         for I in self.solved:
             if self.solved[I].x > 0:
                 self.solved_vert_color[I].x = self.solved[I].norm()
-                if max_solved < self.solved[I].norm():
-                    max_solved = self.solved[I].norm()
             else:
                 self.solved_vert_color[I].z = self.solved[I].norm()
-                if max_solved < self.solved[I].norm():
-                    max_solved = self.solved[I].norm()
         
         for I in self.solved:
             self.diff_vert_color[I].y = (self.solved[I] - self.analytical_solved[I]).norm()
         
         for I in self.solved_vert_color:
-            self.solved_vert_color[I] /= max_solved
+            self.solved_vert_color[I] /= max_analytical
         
         for I in self.analytical_vert_color:
-            self.analytical_vert_color[I] /= max_solved
+            self.analytical_vert_color[I] /= max_analytical
         
         for I in self.diff_vert_color:
-            self.diff_vert_color[I] /= max_solved
+            self.diff_vert_color[I] /= max_analytical
         
         for I in self.solved_vertices:
             self.analytical_vertices[I] = self.get_vertice(I)
@@ -277,103 +313,97 @@ class BEMManager:
             self.diff_vertices[I].z -= 2.2
             
     @ti.kernel
-    def splat_u_from_panels_to_vertices(self):
+    def splat_u_from_raw_solved_to_vertices(self):
         self.solved.fill(0)
         
         if ti.static(self._dim == 3):
-            GaussQR2 = self._GaussQR * self._GaussQR       
-            for I in self.panels_solved:
-                i = I // self._dim
-                ii = I % self._dim
-                area_x = self.get_panel_area(i)
-                for iii in range(GaussQR2):
-                    r1 = self.Gauss_points_1d[iii // self._GaussQR]
-                    r2 = self.Gauss_points_1d[iii % self._GaussQR] * r1
+            for I in range(self.num_of_Dirichlets):
+                # Dirichlet boundary
+                global_i = self.map_local_Dirichlet_index_to_panel_index(I)
 
-                    weight = self.Gauss_weights_1d[iii // self._GaussQR] * self.Gauss_weights_1d[iii % self._GaussQR] * (area_x * 2.0)
+                x1_idx = self.get_vertice_index_from_flat_panel_index(self._dim * global_i + 0)
+                x2_idx = self.get_vertice_index_from_flat_panel_index(self._dim * global_i + 1)
+                x3_idx = self.get_vertice_index_from_flat_panel_index(self._dim * global_i + 2)
 
-                    vert_index = self.get_vertice_index_from_flat_panel_index(I)
-                    jacobian = r1
-
-                    self.solved[vert_index] += (
-                        self.panels_solved[I] * self.rhs_constructor.shape_function(r1, r2, i=ii)
-                    ) * weight * jacobian
+                self.solved[x1_idx] += self.raw_solved[I] * self.get_panel_area(global_i) / 3.0 / self.get_vert_area(x1_idx)
+                self.solved[x2_idx] += self.raw_solved[I] * self.get_panel_area(global_i) / 3.0 / self.get_vert_area(x2_idx)
+                self.solved[x3_idx] += self.raw_solved[I] * self.get_panel_area(global_i) / 3.0 / self.get_vert_area(x3_idx)
             
-            for I in self.solved:
-                self.solved[I] /= self.get_vert_area(I)
+            num_of_Neumann_panels = self.num_of_panels - self.num_of_Dirichlets
+            for I in range(num_of_Neumann_panels):
+                global_i = self.map_local_Neumann_index_to_panel_index(I)
+                
+                x1_idx = self.get_vertice_index_from_flat_panel_index(self._dim * global_i + 0)
+                x2_idx = self.get_vertice_index_from_flat_panel_index(self._dim * global_i + 1)
+                x3_idx = self.get_vertice_index_from_flat_panel_index(self._dim * global_i + 2)
+
+                self.solved[x1_idx] = self.raw_solved[self.num_of_Dirichlets + I] * self.get_panel_area(global_i) / 3.0 / self.get_vert_area(x1_idx)
+                self.solved[x2_idx] = self.raw_solved[self.num_of_Dirichlets + I] * self.get_panel_area(global_i) / 3.0 / self.get_vert_area(x2_idx)
+                self.solved[x3_idx] = self.raw_solved[self.num_of_Dirichlets + I] * self.get_panel_area(global_i) / 3.0 / self.get_vert_area(x3_idx)
 
     @ti.kernel
     def assmeble(self):
         if ti.static(self.num_of_Dirichlets > 0):
             for I, J in self.single_layer._Vmat:
-                global_I = self.map_local_Dirichlet_index_to_panel_index(I // self._dim) * self._dim + I % self._dim
-                global_J = self.map_local_Dirichlet_index_to_panel_index(J // self._dim) * self._dim + J % self._dim
-                self.mat_A[global_I, global_J] = self.single_layer._Vmat[I, J]
+                self.mat_A[I, J] = self.single_layer._Vmat[I, J]
         
         if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
             for I, J in self.double_layer._Kmat:
-                global_I = self.map_local_Dirichlet_index_to_panel_index(I // self._dim) * self._dim + I % self._dim
-                global_J = self.map_local_Neumann_index_to_panel_index(J // self._dim) * self._dim + J % self._dim
-                self.mat_A[global_I, global_J] = -self.double_layer._Kmat[I, J]
+                self.mat_A[I, J + self.num_of_Dirichlets] = -self.double_layer._Kmat[I, J]
         
         if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
             for I, J in self.adj_double_layer._Kmat:
-                global_I = self.map_local_Neumann_index_to_panel_index(I // self._dim) * self._dim + I % self._dim
-                global_J = self.map_local_Dirichlet_index_to_panel_index(J // self._dim) * self._dim + J % self._dim
-                self.mat_A[global_I, global_J] = self.adj_double_layer._Kmat[I, J]
+                self.mat_A[I + self.num_of_Dirichlets, J] = self.adj_double_layer._Kmat[I, J]
         
         if ti.static(self.num_of_Neumanns > 0):
             for I, J in self.hypersingular_layer._Wmat:
-                global_I = self.map_local_Neumann_index_to_panel_index(I // self._dim) * self._dim + I % self._dim
-                global_J = self.map_local_Neumann_index_to_panel_index(J // self._dim) * self._dim + J % self._dim
-                self.mat_A[global_I, global_J] = -self.hypersingular_layer._Wmat[I, J]
+                self.mat_A[I + self.num_of_Dirichlets, J + self.num_of_Dirichlets] = -self.hypersingular_layer._Wmat[I, J]
         
         if ti.static(self.num_of_Dirichlets > 0):
             for I in self.rhs_constructor._gvec:
-                global_I = self.map_local_Dirichlet_index_to_panel_index(I // self._dim) * self._dim + I % self._dim
-                self.rhs[global_I] = self.rhs_constructor._gvec[I]
-
-                vert_index = self.get_vertice_index_from_flat_panel_index(global_I)
-                x1 = self.get_vertice_from_flat_panel_index(self._dim * (global_I // self._dim) + 0)
-                x2 = self.get_vertice_from_flat_panel_index(self._dim * (global_I // self._dim) + 1)
-                x3 = self.get_vertice_from_flat_panel_index(self._dim * (global_I // self._dim) + 2)
-                x = (x1 + x2 + x3) / 3.0
-                normal_x = self.get_panel_normal(global_I // self._dim)
-                self.analytical_solved[vert_index] += self.rhs_constructor.analyical_function_Neumann(x, normal_x) * self.get_panel_area(global_I // self._dim) / 3.0
+                self.rhs[I] = self.rhs_constructor._gvec[I]
         
         if ti.static(self.num_of_Neumanns > 0):
             for I in self.rhs_constructor._fvec:
-                global_I = self.map_local_Neumann_index_to_panel_index(I // self._dim) * self._dim + I % self._dim
-                self.rhs[global_I] = self.rhs_constructor._fvec[I]
-
-                vert_index = self.get_vertice_index_from_flat_panel_index(global_I)
-                x1 = self.get_vertice_from_flat_panel_index(self._dim * (global_I // self._dim) + 0)
-                x2 = self.get_vertice_from_flat_panel_index(self._dim * (global_I // self._dim) + 1)
-                x3 = self.get_vertice_from_flat_panel_index(self._dim * (global_I // self._dim) + 2)
-                x = (x1 + x2 + x3) / 3.0
-                self.analytical_solved[vert_index] += self.rhs_constructor.analyical_function_Dirichlet(x) * self.get_panel_area(global_I // self._dim) / 3.0
+                self.rhs[I + self.num_of_Dirichlets] = self.rhs_constructor._fvec[I]
         
-        for I in self.analytical_solved:
-            self.analytical_solved[I] /= self.get_vert_area(I)
+        for I in range(self.num_of_panels):
+            for ii in range(self._dim):
+                # Dirichlet boundary
+                if self.get_panel_type(I) == int(CellFluxType.TOBESOLVED):
+                    vert_index = self.get_vertice_index_from_flat_panel_index(self._dim * I + ii)
+                    x = self.get_vertice(vert_index)
+                    normal_x = self.get_vert_normal(vert_index)
+                    fx = self.rhs_constructor.analyical_function_Neumann(x, normal_x)
+                    self.analytical_solved[vert_index] = fx
+        
+        for I in range(self.num_of_panels):
+            for ii in range(self._dim):
+                # Neumann boundary
+                if self.get_panel_type(I) == int(CellFluxType.NEUMANN_KNOWN):
+                    vert_index = self.get_vertice_index_from_flat_panel_index(self._dim * I + ii)
+                    x = self.get_vertice(vert_index)
+                    gx = self.rhs_constructor.analyical_function_Dirichlet(x)
+                    self.analytical_solved[vert_index] = gx
 
     @ti.kernel
     def Jacobian_solver(self) -> float:
         residual = 0.0
-        for I in self.panels_solved:
-            new_u = self.rhs[I] + self.mat_A[I, I] * self.panels_solved[I]
-            for J in range(self.panels_solved.shape[0]):
-                new_u -= self.mat_A[I, J] * self.panels_solved[J]
+        for I in self.raw_solved:
+            new_u = self.rhs[I] + self.mat_A[I, I] * self.raw_solved[I]
+            for J in range(self.raw_solved.shape[0]):
+                new_u -= self.mat_A[I, J] * self.raw_solved[J]
             new_u /= self.mat_A[I, I]
-            # residual += (self.panels_solved[I] - new_u) * (self.panels_solved[I] - new_u)
-            self.panels_solved[I] = new_u
+            # residual += (self.raw_solved[I] - new_u) * (self.raw_solved[I] - new_u)
+            self.raw_solved[I] = new_u
         
-        for I in self.panels_solved:
+        for I in self.raw_solved:
             b_Ax = self.rhs[I]
-            for J in range(self.panels_solved.shape[0]):
-                b_Ax -= self.mat_A[I, J] * self.panels_solved[J]
+            for J in range(self.raw_solved.shape[0]):
+                b_Ax -= self.mat_A[I, J] * self.raw_solved[J]
             residual += b_Ax * b_Ax
         
-        residual = ti.math.sqrt(residual / self.panels_solved.shape[0])
+        residual = ti.math.sqrt(residual / self.raw_solved.shape[0])
         return residual
 
     def run(self):
@@ -416,35 +446,30 @@ class BEMManager:
                 axis=-1
             )
 
-        self.panels_solved.from_numpy(np_solved)
-        print("solve min = {}, max = {}, mean = {}".format(
-            np.min(np.linalg.norm(np_solved, axis=-1)), np.max(np.linalg.norm(np_solved, axis=-1)), np.mean(np.linalg.norm(np_solved, axis=-1)))
-        )
+        self.raw_solved.from_numpy(np_solved)
         np_analytical_solved = self.analytical_solved.to_numpy()
         print("analytical sovle min = {}, max = {}, mean = {}".format(
             np.min(np.linalg.norm(np_analytical_solved, axis=-1)), np.max(np.linalg.norm(np_analytical_solved, axis=-1)), np.mean(np.linalg.norm(np_analytical_solved, axis=-1)))
         )
-        print("rhs min = {}, max = {}, mean = {}".format(
-            np.min(np.linalg.norm(np_rhs, axis=-1)), np.max(np.linalg.norm(np_rhs, axis=-1)), np.mean(np.linalg.norm(np_rhs, axis=-1)))
-        )
-        print("mat_A min = {}, max = {}, mean = {}".format(
-            np.min(np.linalg.norm(np_mat_A, axis=-1)), np.max(np.linalg.norm(np_mat_A, axis=-1)), np.mean(np.linalg.norm(np_mat_A, axis=-1)))
-        )
-        print("matA ")
-        print(np_mat_A[0, 0], ', ', np_mat_A[0, 1], ', ', np_mat_A[0, 2])
-        print(np_mat_A[1, 0], ', ', np_mat_A[1, 1], ', ', np_mat_A[1, 2])
-        print(np_mat_A[2, 0], ', ', np_mat_A[2, 1], ', ', np_mat_A[2, 2])
         residual = np.mean(np.abs(np_solved))
         if self._core_manager.iteration <= 15:
             self._log_manager.InfoLog("residual = {}".format(residual))
-        self.splat_u_from_panels_to_vertices()
+        self.splat_u_from_raw_solved_to_vertices()
+        np_solved = self.solved.to_numpy()
+        print("solve min = {}, max = {}, mean = {}".format(
+            np.min(np.linalg.norm(np_solved, axis=-1)), np.max(np.linalg.norm(np_solved, axis=-1)), np.mean(np.linalg.norm(np_solved, axis=-1)))
+        )
+        np_residual = np_analytical_solved - np_solved
+        print("residual min = {}, max = {}, mean = {}".format(
+            np.min(np.linalg.norm(np_residual, axis=-1)), np.max(np.linalg.norm(np_residual, axis=-1)), np.mean(np.linalg.norm(np_residual, axis=-1)))
+        )
         self.compute_color()
     
     def solve(self):
         residual = self.Jacobian_solver()
         if self._core_manager.iteration <= 15:
             self._log_manager.InfoLog("residual = {}".format(residual))
-        self.splat_u_from_panels_to_vertices()
+        self.splat_u_from_raw_solved_to_vertices()
         self.compute_color()
 
     def kill(self):

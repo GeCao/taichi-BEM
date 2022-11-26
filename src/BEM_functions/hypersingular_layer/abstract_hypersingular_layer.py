@@ -16,8 +16,8 @@ class AbstractHypersingularLayer(ABC):
         return self._BEM_manager.grad_G_y(x, y, normal_y)
     
     @ti.func
-    def grad2_G_xy(self, x, y, curl_phix, curl_phiy):
-        return self._BEM_manager.grad2_G_xy(x, y, curl_phix, curl_phiy)
+    def grad2_G_xy(self, x, y, curl_phix_dot_curl_phiy):
+        return self._BEM_manager.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
 
     @property
     @abstractmethod

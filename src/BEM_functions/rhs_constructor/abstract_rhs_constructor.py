@@ -14,10 +14,6 @@ class AbstractRHSConstructor(ABC):
     @ti.func
     def grad_G_y(self, x, y, normal_y):
         return self._BEM_manager.grad_G_y(x, y, normal_y)
-    
-    @ti.func
-    def grad2_G_xy(self, x, y, curl_phix, curl_phiy):
-        return self._BEM_manager.grad2_G_xy(x, y, curl_phix, curl_phiy)
 
     @property
     @abstractmethod

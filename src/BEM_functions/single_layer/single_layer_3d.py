@@ -2,7 +2,7 @@ import taichi as ti
 import numpy as np
 
 from src.BEM_functions.single_layer import AbstractSingleLayer
-from src.managers.mesh_manager import CellType, PanelsRelation
+from src.managers.mesh_manager import CellFluxType, VertAttachType, PanelsRelation
 
 
 class SingleLayer3d(AbstractSingleLayer):
@@ -30,7 +30,7 @@ class SingleLayer3d(AbstractSingleLayer):
             self._Vmat = ti.Vector.field(
                 self._n,
                 dtype=self._ti_dtype,
-                shape=(self.num_of_Dirichlets * self._Q, self.num_of_Dirichlets * self._Q)
+                shape=(self.num_of_Dirichlets, self.num_of_Dirichlets)
             )
     
     @ti.func
@@ -63,26 +63,14 @@ class SingleLayer3d(AbstractSingleLayer):
     
     @ti.func
     def shape_function(self, r1, r2, i: int):
-        """
-        Providing x (r1, r2) = (1 - r1) * x1 + (r1 - r2) * x2 + r2 * x3
-
-        case i == 0:
-            b_N^0 = 1 - r1
-        case i == 1:
-            b_N^0 = r1 - r2
-        case i == 2:
-            b_N^0 = r2
-        """
-        return 1 - r1 if i == 0 else (r1 - r2 if i == 1 else r2)
+        return self._BEM_manager.shape_function(r1, r2, i)
     
     @ti.func
     def integrate_on_two_panels(
         self,
-        vert_boundary,
+        panel_boundary,
         triangle_x: int,
         triangle_y: int,
-        basis_function_index_x: int,
-        basis_function_index_y: int,
         panels_relation: int
     ):
         """
@@ -160,15 +148,12 @@ class SingleLayer3d(AbstractSingleLayer):
         area_y = self._BEM_manager.get_panel_area(triangle_y)
         normal_y = self._BEM_manager.get_panel_normal(triangle_y)
 
-        g1 = vert_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(3 * triangle_y + 0)]
-        g2 = vert_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(3 * triangle_y + 1)]
-        g3 = vert_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(3 * triangle_y + 2)]
+        inner_val_y = panel_boundary[triangle_y]
 
         GaussQR2 = self._GaussQR * self._GaussQR
         GaussQR4 = GaussQR2 * GaussQR2
         
         for gauss_number in range(GaussQR4):
-            # Generate number(xsi, eta1, eta2, eta3)
             iii = gauss_number // GaussQR2
             jjj = gauss_number % GaussQR2
 
@@ -201,14 +186,9 @@ class SingleLayer3d(AbstractSingleLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-                inner_val_y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=g1, x2=g2, x3=g3
-                )
 
                 integrand += (
-                    self.G(x, y) * inner_val_y * phix * phiy
+                    self.G(x, y) * inner_val_y
                 ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COINCIDE):
                 # Get your jacobian
@@ -227,15 +207,10 @@ class SingleLayer3d(AbstractSingleLayer):
                     y = self.interplate_from_unit_triangle_to_general(
                         r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                     )
-                    phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                    phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-                    inner_val_y = self.interplate_from_unit_triangle_to_general(
-                        r1=r1_y, r2=r2_y, x1=g1, x2=g2, x3=g3
-                    )
 
                     # D1, D3, D5
                     integrand += (
-                        self.G(x, y) * inner_val_y * phix * phiy
+                        self.G(x, y) * inner_val_y
                     ) * weight * jacobian
 
                     r1_y, r2_y = xz[0], xz[1]
@@ -247,15 +222,10 @@ class SingleLayer3d(AbstractSingleLayer):
                     y = self.interplate_from_unit_triangle_to_general(
                         r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                     )
-                    phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                    phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-                    inner_val_y = self.interplate_from_unit_triangle_to_general(
-                        r1=r1_y, r2=r2_y, x1=g1, x2=g2, x3=g3
-                    )
 
                     # D2, D4, D6
                     integrand += (
-                        self.G(x, y) * inner_val_y * phix * phiy
+                        self.G(x, y) * inner_val_y
                     ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COMMON_VERTEX):
                 # This algorithm includes 6 regions D1, D2
@@ -271,15 +241,10 @@ class SingleLayer3d(AbstractSingleLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-                inner_val_y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=g1, x2=g2, x3=g3
-                )
                 
                 jacobian = xsi * xsi * xsi * eta2
                 integrand += (
-                    self.G(x, y) * inner_val_y * phix * phiy
+                    self.G(x, y) * inner_val_y
                 ) * weight * jacobian
 
                 # D2
@@ -294,15 +259,10 @@ class SingleLayer3d(AbstractSingleLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-                inner_val_y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=g1, x2=g2, x3=g3
-                )
                 
                 jacobian = xsi * xsi * xsi * eta2
                 integrand += (
-                    self.G(x, y) * inner_val_y * phix * phiy
+                    self.G(x, y) * inner_val_y
                 ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COMMON_EDGE):
                 # This algorithm includes 6 regions D1 ~ D5
@@ -318,15 +278,10 @@ class SingleLayer3d(AbstractSingleLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-                inner_val_y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=g1, x2=g2, x3=g3
-                )
                 
                 jacobian = xsi * xsi * xsi * eta1 * eta1
                 integrand += (
-                    self.G(x, y) * inner_val_y * phix * phiy
+                    self.G(x, y) * inner_val_y
                 ) * weight * jacobian
 
                 # D2
@@ -341,15 +296,10 @@ class SingleLayer3d(AbstractSingleLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-                inner_val_y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=g1, x2=g2, x3=g3
-                )
                 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.G(x, y) * inner_val_y * phix * phiy
+                    self.G(x, y) * inner_val_y
                 ) * weight * jacobian
 
                 # D3
@@ -364,15 +314,10 @@ class SingleLayer3d(AbstractSingleLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-                inner_val_y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=g1, x2=g2, x3=g3
-                )
                 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.G(x, y) * inner_val_y * phix * phiy
+                    self.G(x, y) * inner_val_y
                 ) * weight * jacobian
 
                 # D4
@@ -388,15 +333,10 @@ class SingleLayer3d(AbstractSingleLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-                inner_val_y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=g1, x2=g2, x3=g3
-                )
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.G(x, y) * inner_val_y * phix * phiy
+                    self.G(x, y) * inner_val_y
                 ) * weight * jacobian
 
                 # D5
@@ -412,15 +352,10 @@ class SingleLayer3d(AbstractSingleLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-                inner_val_y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=g1, x2=g2, x3=g3
-                )
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.G(x, y) * inner_val_y * phix * phiy
+                    self.G(x, y) * inner_val_y
                 ) * weight * jacobian
         
         return integrand
@@ -433,53 +368,38 @@ class SingleLayer3d(AbstractSingleLayer):
         Usually, both of them requires to calculate a "evaluateShapeFunction" and a "pi_p.Derivative(t).norm()".
         They are the "phase functions" and "Jacobian" we have mentioned before.
         """
-        dim = 3
-
         if ti.static(self.num_of_Dirichlets > 0):
             self._Vmat.fill(0)
 
-            for I, J in self._Vmat:
-                i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(I // dim)
-                j = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(J // dim)
-                ii = I % dim
-                jj = J % dim
+            for local_I, local_J in self._Vmat:
+                global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
+                global_j = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_J)
 
                 # Construct a local matrix
-                panels_relation = self._BEM_manager.get_panels_relation(i, j)
-                self._Vmat[I, J] += self.integrate_on_two_panels(
-                    vert_boundary=self._BEM_manager.default_ones,
-                    triangle_x=i, triangle_y=j,
-                    basis_function_index_x=ii, basis_function_index_y=jj,
+                panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
+                self._Vmat[local_I, local_J] += self.integrate_on_two_panels(
+                    panel_boundary=self._BEM_manager.default_panel_ones,
+                    triangle_x=global_i, triangle_y=global_j,
                     panels_relation=panels_relation
                 )
     
     @ti.func
-    def apply_V_dot_boundary(self, vert_boundary, result_vec, cell_type: int, add: int=1):
-        assert(vert_boundary.shape[0] == self.num_of_vertices)
-        if cell_type == int(CellType.NEUMANN):
-            assert(result_vec.shape[0] == self.num_of_Neumanns * self._Q)
-        elif cell_type == int(CellType.DIRICHLET):
-            assert(result_vec.shape[0] == self.num_of_Dirichlets * self._Q)
+    def apply_V_dot_panel_boundary(self, panel_boundary, result_vec, add: int=1):
+        assert(panel_boundary.shape[0] == self.num_of_panels)
+        assert(result_vec.shape[0] == self.num_of_Dirichlets)
         
         multiplier = 1.0
         if not add:
             multiplier = -1.0
 
-        for I in result_vec:
-            i = I // self._Q
-            if cell_type == int(CellType.DIRICHLET):
-                i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(I // self._Q)
-            elif cell_type == int(CellType.NEUMANN):
-                i = self._BEM_manager.map_local_Neumann_index_to_panel_index(I // self._Q)
-            ii = I % self._Q
-            for J in range(self.num_of_panels * self._Q):
-                j = J // self._Q
-                jj = J % self._Q
-
-                panels_relation = self._BEM_manager.get_panels_relation(i, j)
-                result_vec[I] += multiplier * self.integrate_on_two_panels(
-                    vert_boundary=vert_boundary,
-                    triangle_x=i, triangle_y=j,
-                    basis_function_index_x=ii, basis_function_index_y=jj,
+        num_of_Neumann_panels = self.num_of_panels - self.num_of_Dirichlets
+        for local_I in result_vec:
+            for local_J in range(num_of_Neumann_panels):
+                global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
+                global_j = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_J)
+                panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
+                result_vec[local_I] += multiplier * self.integrate_on_two_panels(
+                    panel_boundary=panel_boundary,
+                    triangle_x=global_i, triangle_y=global_j,
                     panels_relation=panels_relation
                 )

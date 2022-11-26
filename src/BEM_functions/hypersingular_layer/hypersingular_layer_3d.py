@@ -2,7 +2,7 @@ import taichi as ti
 import numpy as np
 
 from src.BEM_functions.hypersingular_layer import AbstractHypersingularLayer
-from src.managers.mesh_manager import CellType, PanelsRelation
+from src.managers.mesh_manager import PanelsRelation
 
 
 class HypersingularLayer3d(AbstractHypersingularLayer):
@@ -13,6 +13,7 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
 
         self._GaussQR = self._BEM_manager._GaussQR
         self._Q = self._BEM_manager._Q  # Number of local shape functions
+        self._dim = self._BEM_manager._dim
 
         self._ti_dtype = self._BEM_manager._ti_dtype
         self._np_dtype = self._BEM_manager._np_dtype
@@ -24,13 +25,13 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
         self.num_of_Neumanns = self._BEM_manager.get_num_of_Neumanns()
         self.num_of_vertices = self._BEM_manager.get_num_of_vertices()
         self.num_of_panels = self._BEM_manager.get_num_of_panels()
-        assert(self.num_of_Dirichlets + self.num_of_Neumanns > 0)
         self._Wmat = ti.Vector.field(self._n, dtype=self._ti_dtype, shape=())
+        assert(self.num_of_Dirichlets + self.num_of_Neumanns > 0)
         if self.num_of_Neumanns > 0:
             self._Wmat = ti.Vector.field(
                 self._n,
                 dtype=self._ti_dtype,
-                shape=(self.num_of_Neumanns * self._Q, self.num_of_Neumanns * self._Q)
+                shape=(self.num_of_Neumanns, self.num_of_Neumanns)
             )
     
     @ti.func
@@ -72,45 +73,10 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
         grad_u = gradu_integral / area
 
         return grad_u
-
-    @ti.func
-    def surface_grad_phi(self, x1, x2, x3, normal, area, i: int):
-        """
-        Providing x (r1, r2) = (1 - r1) * x1 + (r1 - r2) * x2 + r2 * x3
-
-        case i == 0:
-            phi_0 = b_N^0 = 1 - r1
-        case i == 1:
-            phi_1 = b_N^0 = r1 - r2
-        case i == 2:
-            phi_2 = b_N^0 = r2
-        """
-        u1, u2, u3 = 0.0, 0.0, 0.0
-        if i == 0:
-            u1, u2, u3 = 1.0, 0.0, 0.0
-        elif i == 1:
-            u1, u2, u3 = 0.0, 1.0, 0.0
-        elif i == 2:
-            u1, u2, u3 = 0.0, 0.0, 1.0
-        else:
-            print("For 3D case, a shape function only accept 0, 1, or 2, not {}".format(i))
-        
-        grad_u = self.surface_grad(x1, x2, x3, u1, u2, u3, normal, area)
-        return grad_u
     
     @ti.func
     def shape_function(self, r1, r2, i: int):
-        """
-        Providing x (r1, r2) = (1 - r1) * x1 + (r1 - r2) * x2 + r2 * x3
-
-        case i == 0:
-            b_N^0 = 1 - r1
-        case i == 1:
-            b_N^0 = r1 - r2
-        case i == 2:
-            b_N^0 = r2
-        """
-        return 1 - r1 if i == 0 else (r1 - r2 if i == 1 else r2)
+        return self._BEM_manager.shape_function(r1, r2, i)
     
     @ti.func
     def integrate_on_two_panels(
@@ -190,24 +156,50 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
         x3 = self._BEM_manager.get_vertice_from_flat_panel_index(3 * triangle_x + 2)
         area_x = self._BEM_manager.get_panel_area(triangle_x)
         normal_x = self._BEM_manager.get_panel_normal(triangle_x)
-        curl_phix = ti.math.cross(
-            normal_x,
-            self.surface_grad_phi(x1=x1, x2=x2, x3=x3, normal=normal_x, area=area_x, i=basis_function_index_x)
-        )
+        phi1_x = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+        phi2_x = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+        phi3_x = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+        if basis_function_index_x == 0:
+            phi1_x.x = 1.0
+        elif basis_function_index_x == 1:
+            phi2_x.x = 1.0
+        elif basis_function_index_x == 2:
+            phi3_x.x = 1.0
 
         y1 = self._BEM_manager.get_vertice_from_flat_panel_index(3 * triangle_y + 0)
         y2 = self._BEM_manager.get_vertice_from_flat_panel_index(3 * triangle_y + 1)
         y3 = self._BEM_manager.get_vertice_from_flat_panel_index(3 * triangle_y + 2)
         area_y = self._BEM_manager.get_panel_area(triangle_y)
         normal_y = self._BEM_manager.get_panel_normal(triangle_y)
-        curl_phiy = ti.math.cross(
-            normal_y,
-            self.surface_grad_phi(x1=y1, x2=y2, x3=y3, normal=normal_y, area=area_y, i=basis_function_index_y)
-        )
-
+        phi1_y = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+        phi2_y = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+        phi3_y = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+        if basis_function_index_y == 0:
+            phi1_y.x = 1.0
+        elif basis_function_index_y == 1:
+            phi2_y.x = 1.0
+        elif basis_function_index_y == 2:
+            phi3_y.x = 1.0
+        
         g1 = vert_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(3 * triangle_y + 0)]
         g2 = vert_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(3 * triangle_y + 1)]
         g3 = vert_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(3 * triangle_y + 2)]
+
+        # If you are computing a W matrix, g1=g2=g3, you are using phase function only
+        # If you are computing a W @ g multiplication, in this case, basis_function_index_y=-1, you are using g only
+        phi1_y = phi1_y + g1
+        phi2_y = phi2_y + g2
+        phi3_y = phi3_y + g3
+
+        curl_phix_dot_curl_phiy = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+        for i in ti.static(range(self._n)):
+            surface_grad_i_x = self.surface_grad(x1, x2, x3, phi1_x[i], phi2_x[i], phi3_x[i], normal_x, area_x)
+            curl_i_x = normal_x.cross(surface_grad_i_x)
+
+            surface_grad_i_y = self.surface_grad(y1, y2, y3, phi1_y[i], phi2_y[i], phi3_y[i], normal_y, area_y)
+            curl_i_y = normal_y.cross(surface_grad_i_y)
+
+            curl_phix_dot_curl_phiy[i] = curl_i_x.dot(curl_i_y)
 
         GaussQR2 = self._GaussQR * self._GaussQR
         GaussQR4 = GaussQR2 * GaussQR2
@@ -246,17 +238,14 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                inner_val_y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=g1, x2=g2, x3=g3
-                )
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
                 phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
 
                 integrand += (
-                    -self.grad2_G_xy(x, y, curl_phix, curl_phiy) * inner_val_y * phix * phiy
+                    -self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
                 ) * weight * jacobian
                 integrand += k2 * (
-                    self.G(x, y) * inner_val_y * phix * phiy * normal_x.dot(normal_y)
+                    self.G(x, y) * phix * phiy * normal_x.dot(normal_y)
                 ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COINCIDE):
                 # Get your jacobian
@@ -279,16 +268,13 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
                     )
                     phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
                     phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-                    inner_val_y = self.interplate_from_unit_triangle_to_general(
-                        r1=r1_y, r2=r2_y, x1=g1, x2=g2, x3=g3
-                    )
 
                     # D1, D3, D5
                     integrand += (
-                        -self.grad2_G_xy(x, y, curl_phix, curl_phiy) * inner_val_y * phix * phiy
+                        -self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
                     ) * weight * jacobian
                     integrand += k2 * (
-                        self.G(x, y) * inner_val_y * phix * phiy * normal_x.dot(normal_y)
+                        self.G(x, y) * phix * phiy * normal_x.dot(normal_y)
                     ) * weight * jacobian
 
                     r1_y, r2_y = xz[0], xz[1]
@@ -302,16 +288,13 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
                     )
                     phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
                     phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-                    inner_val_y = self.interplate_from_unit_triangle_to_general(
-                        r1=r1_y, r2=r2_y, x1=g1, x2=g2, x3=g3
-                    )
 
                     # D2, D4, D6
                     integrand += (
-                        -self.grad2_G_xy(x, y, curl_phix, curl_phiy) * inner_val_y * phix * phiy
+                        -self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
                     ) * weight * jacobian
                     integrand += k2 * (
-                        self.G(x, y) * inner_val_y * phix * phiy * normal_x.dot(normal_y)
+                        self.G(x, y) * phix * phiy * normal_x.dot(normal_y)
                     ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COMMON_VERTEX):
                 # This algorithm includes 6 regions D1, D2
@@ -327,18 +310,15 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                inner_val_y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=g1, x2=g2, x3=g3
-                )
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
                 phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
 
                 jacobian = xsi * xsi * xsi * eta2
                 integrand += (
-                    -self.grad2_G_xy(x, y, curl_phix, curl_phiy) * inner_val_y * phix * phiy
+                    -self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
                 ) * weight * jacobian
                 integrand += k2 * (
-                    self.G(x, y) * inner_val_y * phix * phiy * normal_x.dot(normal_y)
+                    self.G(x, y) * phix * phiy * normal_x.dot(normal_y)
                 ) * weight * jacobian
 
                 # D2
@@ -353,18 +333,15 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                inner_val_y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=g1, x2=g2, x3=g3
-                )
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
                 phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
 
                 jacobian = xsi * xsi * xsi * eta2
                 integrand += (
-                    -self.grad2_G_xy(x, y, curl_phix, curl_phiy) * inner_val_y * phix * phiy
+                    -self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
                 ) * weight * jacobian
                 integrand += k2 * (
-                    self.G(x, y) * inner_val_y * phix * phiy * normal_x.dot(normal_y)
+                    self.G(x, y) * phix * phiy * normal_x.dot(normal_y)
                 ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COMMON_EDGE):
                 # This algorithm includes 6 regions D1 ~ D5
@@ -380,18 +357,15 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                inner_val_y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=g1, x2=g2, x3=g3
-                )
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
                 phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1
                 integrand += (
-                    -self.grad2_G_xy(x, y, curl_phix, curl_phiy) * inner_val_y * phix * phiy
+                    -self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
                 ) * weight * jacobian
                 integrand += k2 * (
-                    self.G(x, y) * inner_val_y * phix * phiy * normal_x.dot(normal_y)
+                    self.G(x, y) * phix * phiy * normal_x.dot(normal_y)
                 ) * weight * jacobian
 
                 # D2
@@ -406,18 +380,15 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                inner_val_y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=g1, x2=g2, x3=g3
-                )
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
                 phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    -self.grad2_G_xy(x, y, curl_phix, curl_phiy) * inner_val_y * phix * phiy
+                    -self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
                 ) * weight * jacobian
                 integrand += k2 * (
-                    self.G(x, y) * inner_val_y * phix * phiy * normal_x.dot(normal_y)
+                    self.G(x, y) * phix * phiy * normal_x.dot(normal_y)
                 ) * weight * jacobian
 
                 # D3
@@ -432,18 +403,15 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                inner_val_y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=g1, x2=g2, x3=g3
-                )
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
                 phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    -self.grad2_G_xy(x, y, curl_phix, curl_phiy) * inner_val_y * phix * phiy
+                    -self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
                 ) * weight * jacobian
                 integrand += k2 * (
-                    self.G(x, y) * inner_val_y * phix * phiy * normal_x.dot(normal_y)
+                    self.G(x, y) * phix * phiy * normal_x.dot(normal_y)
                 ) * weight * jacobian
 
                 # D4
@@ -459,18 +427,15 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                inner_val_y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=g1, x2=g2, x3=g3
-                )
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
                 phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    -self.grad2_G_xy(x, y, curl_phix, curl_phiy) * inner_val_y * phix * phiy
+                    -self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
                 ) * weight * jacobian
                 integrand += k2 * (
-                    self.G(x, y) * inner_val_y * phix * phiy * normal_x.dot(normal_y)
+                    self.G(x, y) * phix * phiy * normal_x.dot(normal_y)
                 ) * weight * jacobian
 
                 # D5
@@ -486,18 +451,15 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                inner_val_y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=g1, x2=g2, x3=g3
-                )
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
                 phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
                 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    -self.grad2_G_xy(x, y, curl_phix, curl_phiy) * inner_val_y * phix * phiy
+                    -self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
                 ) * weight * jacobian
                 integrand += k2 * (
-                    self.G(x, y) * inner_val_y * phix * phiy * normal_x.dot(normal_y)
+                    self.G(x, y) * phix * phiy * normal_x.dot(normal_y)
                 ) * weight * jacobian
         
         return integrand
@@ -510,53 +472,52 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
         Usually, both of them requires to calculate a "evaluateShapeFunction" and a "pi_p.Derivative(t).norm()".
         They are the "phase functions" and "Jacobian" we have mentioned before.
         """
-        dim = 3
-
         if ti.static(self.num_of_Neumanns > 0):
             self._Wmat.fill(0)
 
-            for I, J in self._Wmat:
-                i = self._BEM_manager.map_local_Neumann_index_to_panel_index(I // dim)
-                j = self._BEM_manager.map_local_Neumann_index_to_panel_index(J // dim)
-                ii = I % dim
-                jj = J % dim
+            num_of_Neumann_panels = self.num_of_panels - self.num_of_Dirichlets
+            for local_I in range(num_of_Neumann_panels):
+                for local_J in range(num_of_Neumann_panels):
+                    for ii in range(self._dim):
+                        for jj in range(self._dim):
+                            global_i = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_I)
+                            global_j = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_J)
 
-                # Construct a local matrix
-                panels_relation = self._BEM_manager.get_panels_relation(i, j)
-                self._Wmat[I, J] += self.integrate_on_two_panels(
-                    vert_boundary=self._BEM_manager.default_ones,
-                    triangle_x=i, triangle_y=j,
-                    basis_function_index_x=ii, basis_function_index_y=jj,
-                    panels_relation=panels_relation
-                )
+                            panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
+
+                            global_vert_idx_i = self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_i + ii)
+                            local_vert_idx_i = self._BEM_manager.map_global_vert_index_to_local_Neumann(global_vert_idx_i)
+                            global_vert_idx_j = self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + jj)
+                            local_vert_idx_j = self._BEM_manager.map_global_vert_index_to_local_Neumann(global_vert_idx_j)
+                            self._Wmat[local_vert_idx_i, local_vert_idx_j] += self.integrate_on_two_panels(
+                                vert_boundary=self._BEM_manager.default_vert_ones,
+                                triangle_x=global_i, triangle_y=global_j,
+                                basis_function_index_x=ii, basis_function_index_y=jj,
+                                panels_relation=panels_relation
+                            )
     
     @ti.func
-    def apply_W_dot_boundary(self, vert_boundary, result_vec, cell_type: int, add: int=1):
+    def apply_W_dot_vert_boundary(self, vert_boundary, result_vec, add: int=1):
         assert(vert_boundary.shape[0] == self.num_of_vertices)
-        if cell_type == int(CellType.NEUMANN):
-            assert(result_vec.shape[0] == self.num_of_Neumanns * self._Q)
-        elif cell_type == int(CellType.DIRICHLET):
-            assert(result_vec.shape[0] == self.num_of_Dirichlets * self._Q)
+        assert(result_vec.shape[0] == self.num_of_Neumanns)
         
         multiplier = 1.0
-        if not add:
+        if add <= 0:
             multiplier = -1.0
+        
+        num_of_Neumann_panels = self.num_of_panels - self.num_of_Dirichlets
+        for local_I in range(num_of_Neumann_panels):
+            for local_J in range(self.num_of_Dirichlets):
+                for ii in range(self._dim):
+                    global_i = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_I)
+                    global_vert_idx = self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_i + ii)
+                    local_vert_idx = self._BEM_manager.map_global_vert_index_to_local_Neumann(global_vert_idx)
+                    global_j = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_J)
 
-        for I in result_vec:
-            i = I // self._Q
-            if cell_type == int(CellType.DIRICHLET):
-                i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(I // self._Q)
-            elif cell_type == int(CellType.NEUMANN):
-                i = self._BEM_manager.map_local_Neumann_index_to_panel_index(I // self._Q)
-            ii = I % self._Q
-            for J in range(self.num_of_panels * self._Q):
-                j = J // self._Q
-                jj = J % self._Q
-
-                panels_relation = self._BEM_manager.get_panels_relation(i, j)
-                result_vec[I] += multiplier * self.integrate_on_two_panels(
-                    vert_boundary=vert_boundary,
-                    triangle_x=i, triangle_y=j,
-                    basis_function_index_x=ii, basis_function_index_y=jj,
-                    panels_relation=panels_relation
-                )
+                    panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
+                    result_vec[local_vert_idx] += multiplier * self.integrate_on_two_panels(
+                        vert_boundary=vert_boundary,
+                        triangle_x=global_i, triangle_y=global_j,
+                        basis_function_index_x=ii, basis_function_index_y=-1,
+                        panels_relation=panels_relation
+                    )
