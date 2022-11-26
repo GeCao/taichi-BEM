@@ -114,7 +114,7 @@ class SingleLayer3d(AbstractSingleLayer):
          - x (r1, r2) = (1 - r1) * x1 + (r1 - r2) * x2 + r2 * x3
 
          ==============================
-        To sum up, a random number (t, s) as a sample on triangle, where t,s \in [-1, 1]
+        To sum up, a random number (t, s) as a sample on triangle, where t,s \in [0, 1]
         r1, r2          = ...
         Sampled_point   = (1 - r1) * x1  +  (r1 - r2) * x2  +  r2 * x3
         Corres_weight   = w * 2 * Area
@@ -133,6 +133,9 @@ class SingleLayer3d(AbstractSingleLayer):
             = (2 * area_x) * (2 * area_y) *           int_{unit_triangle}    int_{unit_triangle}     (func) dx             dy
             = (2 * area_x) * (2 * area_y) * sum_{6} * int_{0->1} int_{0->w1} int_{0->w2} int_{0->w3} (func) d(w1) d(w2)    d(w3) d(w4)
             = (2 * area_x) * (2 * area_y) * sum_{6} * int_{0->1} int_{0->1}  int_{0->1}  int_{0->1}  (func) d(xsi) d(eta1) d(eta2) d(eta3)
+        
+        Similarly, besides the coincide case we have mentioned above,
+        other approaches such like common vertices/edges can be refered by chapter 5.2.2 and 5.2.2
         """
         integrand = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
 
@@ -363,10 +366,7 @@ class SingleLayer3d(AbstractSingleLayer):
     @ti.kernel
     def forward(self):
         """
-        ### Perspective from Parametric functions
-        We have F(), and G() functions for BEM in this perspective.
-        Usually, both of them requires to calculate a "evaluateShapeFunction" and a "pi_p.Derivative(t).norm()".
-        They are the "phase functions" and "Jacobian" we have mentioned before.
+        Compute BIO matix V_mat
         """
         if ti.static(self.num_of_Dirichlets > 0):
             self._Vmat.fill(0)
@@ -385,6 +385,17 @@ class SingleLayer3d(AbstractSingleLayer):
     
     @ti.func
     def apply_V_dot_panel_boundary(self, panel_boundary, result_vec, add: int=1):
+        """
+        If you are applying Dirichlet boundary on vertices,
+        You need to solve a linear system equations to get Neumann panels,
+        Usually, a linear system equations requires a rhs, which
+
+        rhs_{Dirichlet part} = Mg / 2 + Kg - Vf
+
+        In this function, a [Vf] will be computed,
+        where [f] is the input argument [panel_boundary] where an extended Neumann bounary is applied on panels (Usually all zeros, though)
+        and [V] is our own BIO matrix [self._Vmat]
+        """
         assert(panel_boundary.shape[0] == self.num_of_panels)
         assert(result_vec.shape[0] == self.num_of_Dirichlets)
         
