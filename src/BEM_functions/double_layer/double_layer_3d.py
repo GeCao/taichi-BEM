@@ -27,7 +27,7 @@ class DoubleLayer3d(AbstractDoubleLayer):
         self.num_of_vertices = self._BEM_manager.get_num_of_vertices()
         self.num_of_panels = self._BEM_manager.get_num_of_panels()
         self._Kmat = ti.Vector.field(self._n, dtype=self._ti_dtype, shape=())
-        assert(self.num_of_Neumanns + self.num_of_Dirichlets > 0)
+        assert(self.num_of_Dirichlets + self.num_of_Neumanns > 0)
         if self.num_of_Dirichlets > 0 and self.num_of_Neumanns > 0:
             self._Kmat = ti.Vector.field(
                 self._n,
@@ -121,7 +121,7 @@ class DoubleLayer3d(AbstractDoubleLayer):
         Sampled_point   = (1 - r1) * x1  +  (r1 - r2) * x2  +  r2 * x3
         Corres_weight   = w * 2 * Area
         Jacobian        = r1
-        phase functions = r1, r1 - r2, r2
+        phase functions = 1 - r1, r1 - r2, r2
 
         !!!!!!!!!!!!!!
         However, if these two panels has overlaps, such like common edegs, common vertices, even the same panel.
@@ -423,9 +423,14 @@ class DoubleLayer3d(AbstractDoubleLayer):
                 global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
                 global_j = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_J)
 
+                g1 = vert_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 0)]
+                g2 = vert_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 1)]
+                g3 = vert_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 2)]
+                gy = (g1 + g2 + g3) / 3.0
+
                 panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
                 result_vec[local_I] += multiplier * self.integrate_on_two_panels(
                     triangle_x=global_i, triangle_y=global_j,
                     basis_function_index_y=-1,
                     panels_relation=panels_relation
-                ) * vert_boundary[global_j]
+                ) * gy

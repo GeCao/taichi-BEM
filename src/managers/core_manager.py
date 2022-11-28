@@ -26,7 +26,7 @@ class CoreManager:
         self.log_to_disk = self._simulation_parameters["log_to_disk"]
         self.make_video = self._simulation_parameters["make_video"]
         self.show_wireframe = self._simulation_parameters["show_wireframe"]
-        self.res = (1920, 640)
+        self.res = (1280, 640)
 
         self._log_manager = LogManager(self, self.log_to_disk)
         self._mesh_manager = MeshManager(self)
@@ -63,13 +63,13 @@ class CoreManager:
                 np_solved = self._BEM_manager.solved_vert_color.to_numpy()
                 np_analytical_solved = self._BEM_manager.analytical_vert_color.to_numpy()
                 np_diff_solved = self._BEM_manager.diff_vert_color.to_numpy()
-                print("analytical sovle min = {}, max = {}, mean = {}".format(
+                self._log_manager.InfoLog("analytical sovle min = {}, max = {}, mean = {}".format(
                     np.min(np.linalg.norm(np_analytical_solved, axis=-1)), np.max(np.linalg.norm(np_analytical_solved, axis=-1)), np.mean(np.linalg.norm(np_analytical_solved, axis=-1)))
                 )
-                print("solve min = {}, max = {}, mean = {}".format(
+                self._log_manager.InfoLog("solve min = {}, max = {}, mean = {}".format(
                     np.min(np.linalg.norm(np_solved, axis=-1)), np.max(np.linalg.norm(np_solved, axis=-1)), np.mean(np.linalg.norm(np_solved, axis=-1)))
                 )
-                print("residual min = {}, max = {}, mean = {}".format(
+                self._log_manager.InfoLog("residual min = {}, max = {}, mean = {}".format(
                     np.min(np.linalg.norm(np_diff_solved, axis=-1)), np.max(np.linalg.norm(np_diff_solved, axis=-1)), np.mean(np.linalg.norm(np_diff_solved, axis=-1)))
                 )
             self.camera.track_user_inputs(self.window, movement_speed=0.03, hold_key=ti.ui.LMB)
