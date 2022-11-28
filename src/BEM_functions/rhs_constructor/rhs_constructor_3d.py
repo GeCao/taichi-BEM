@@ -69,29 +69,6 @@ class RHSConstructor3d(AbstractRHSConstructor):
                 x = (x1 + x2 + x3) / 3.0
                 normal_x = self._BEM_manager.get_panel_normal(i)
                 self._panel_f_boundary[i] = self.analyical_function_Neumann(x, normal_x)
-        
-        # num_of_Neumann_panels = self.num_of_panels - self.num_of_Dirichlets
-        # Neumann_offset = 0
-        # for local_I in range(num_of_Neumann_panels):
-        #     global_i = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_I)
-
-        #     self._panel_f_vert_g_boundary_compact[local_I + Neumann_offset] = self._panel_f_boundary[global_i]
-        
-        # Dirichlet_offset = self.num_of_Neumanns
-        # for local_I in range(self.num_of_Dirichlets):
-        #     global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
-
-        #     global_vert_idx1 = self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_i + 0)
-        #     global_vert_idx2 = self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_i + 1)
-        #     global_vert_idx3 = self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_i + 2)
-
-        #     local_vert_idx1 = self._BEM_manager.map_global_vert_index_to_local_Neumann(global_vert_idx1)
-        #     local_vert_idx2 = self._BEM_manager.map_global_vert_index_to_local_Neumann(global_vert_idx2)
-        #     local_vert_idx3 = self._BEM_manager.map_global_vert_index_to_local_Neumann(global_vert_idx3)
-
-        #     self._panel_f_vert_g_boundary_compact[local_vert_idx1 + Dirichlet_offset] = self._vert_g_boundary[global_vert_idx1]
-        #     self._panel_f_vert_g_boundary_compact[local_vert_idx2 + Dirichlet_offset] = self._vert_g_boundary[global_vert_idx2]
-        #     self._panel_f_vert_g_boundary_compact[local_vert_idx3 + Dirichlet_offset] = self._vert_g_boundary[global_vert_idx3]
     
     @ti.func
     def get_g_vec(self):
