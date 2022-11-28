@@ -157,34 +157,26 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
         x3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_x + 2)
         area_x = self._BEM_manager.get_panel_area(triangle_x)
         normal_x = self._BEM_manager.get_panel_normal(triangle_x)
-        phi1_x = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
-        phi2_x = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
-        phi3_x = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
-        phi1_x.x = 1.0 * (basis_function_index_x == 0)
-        phi2_x.x = 1.0 * (basis_function_index_x == 1)
-        phi3_x.x = 1.0 * (basis_function_index_x == 2)
+        phi1_x = 1.0 * (basis_function_index_x == 0)
+        phi2_x = 1.0 * (basis_function_index_x == 1)
+        phi3_x = 1.0 * (basis_function_index_x == 2)
 
         y1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_y + 0)
         y2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_y + 1)
         y3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_y + 2)
         area_y = self._BEM_manager.get_panel_area(triangle_y)
         normal_y = self._BEM_manager.get_panel_normal(triangle_y)
-        phi1_y = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
-        phi2_y = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
-        phi3_y = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
-        phi1_y.x = 1.0 * (basis_function_index_y == 0)
-        phi2_y.x = 1.0 * (basis_function_index_y == 1)
-        phi3_y.x = 1.0 * (basis_function_index_y == 2)
+        phi1_y = 1.0 * (basis_function_index_y == 0)
+        phi2_y = 1.0 * (basis_function_index_y == 1)
+        phi3_y = 1.0 * (basis_function_index_y == 2)
 
-        curl_phix_dot_curl_phiy = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
-        for i in ti.static(range(self._n)):
-            surface_grad_i_x = self.surface_grad(x1, x2, x3, phi1_x[i], phi2_x[i], phi3_x[i], normal_x, area_x)
-            curl_i_x = ti.math.cross(normal_x, surface_grad_i_x)
+        surface_grad_i_x = self.surface_grad(x1, x2, x3, phi1_x, phi2_x, phi3_x, normal_x, area_x)
+        curl_i_x = ti.math.cross(normal_x, surface_grad_i_x)
 
-            surface_grad_i_y = self.surface_grad(y1, y2, y3, phi1_y[i], phi2_y[i], phi3_y[i], normal_y, area_y)
-            curl_i_y = ti.math.cross(normal_y, surface_grad_i_y)
+        surface_grad_i_y = self.surface_grad(y1, y2, y3, phi1_y, phi2_y, phi3_y, normal_y, area_y)
+        curl_i_y = ti.math.cross(normal_y, surface_grad_i_y)
 
-            curl_phix_dot_curl_phiy[i] = curl_i_x.dot(curl_i_y)
+        curl_phix_dot_curl_phiy = curl_i_x.dot(curl_i_y)
 
         GaussQR2 = self._GaussQR * self._GaussQR
         GaussQR4 = GaussQR2 * GaussQR2

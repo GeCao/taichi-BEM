@@ -2,7 +2,7 @@ import taichi as ti
 import numpy as np
 
 from src.BEM_functions.adj_double_layer import AbstractAdjDoubleLayer
-from src.managers.mesh_manager import CellFluxType, PanelsRelation, VertAttachType, KernelType
+from src.managers.mesh_manager import CellFluxType, PanelsRelation, VertAttachType
 
 
 @ti.data_oriented
@@ -191,15 +191,9 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                 )
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
 
-                if self._kernel_type == int(KernelType.LAPLACE):
-                    integrand += (
-                        self.grad_G_y(y, x, normal_x) * phix
-                    ) * weight * jacobian
-                elif self._kernel_type == int(KernelType.HELMHOLTZ):
-                    integrand += (
-                        self.grad_G_y(x, y, normal_y) * phix
-                    ) * weight * jacobian
-                
+                integrand += (
+                    self.grad_G_y(y, x, normal_x) * phix
+                ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COINCIDE):
                 # Get your jacobian
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
@@ -222,14 +216,9 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                     phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
 
                     # D1, D3, D5
-                    if self._kernel_type == int(KernelType.LAPLACE):
-                        integrand += (
-                            self.grad_G_y(y, x, normal_x) * phix
-                        ) * weight * jacobian
-                    elif self._kernel_type == int(KernelType.HELMHOLTZ):
-                        integrand += (
-                            self.grad_G_y(x, y, normal_y) * phix
-                        ) * weight * jacobian
+                    integrand += (
+                        self.grad_G_y(y, x, normal_x) * phix
+                    ) * weight * jacobian
 
                     r1_y, r2_y = xz[0], xz[1]
                     r1_x, r2_x = xz[0] - xz[2], xz[1] - xz[3]
@@ -243,14 +232,9 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                     phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
 
                     # D2, D4, D6
-                    if self._kernel_type == int(KernelType.LAPLACE):
-                        integrand += (
-                            self.grad_G_y(y, x, normal_x) * phix
-                        ) * weight * jacobian
-                    elif self._kernel_type == int(KernelType.HELMHOLTZ):
-                        integrand += (
-                            self.grad_G_y(x, y, normal_y) * phix
-                        ) * weight * jacobian
+                    integrand += (
+                        self.grad_G_y(y, x, normal_x) * phix
+                    ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COMMON_VERTEX):
                 # This algorithm includes 6 regions D1, D2
                 # D1
@@ -268,14 +252,9 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
 
                 jacobian = xsi * xsi * xsi * eta2
-                if self._kernel_type == int(KernelType.LAPLACE):
-                    integrand += (
-                        self.grad_G_y(y, x, normal_x) * phix
-                    ) * weight * jacobian
-                elif self._kernel_type == int(KernelType.HELMHOLTZ):
-                    integrand += (
-                        self.grad_G_y(x, y, normal_y) * phix
-                    ) * weight * jacobian
+                integrand += (
+                    self.grad_G_y(y, x, normal_x) * phix
+                ) * weight * jacobian
 
                 # D2
                 w = ti.Vector(
@@ -292,14 +271,9 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
 
                 jacobian = xsi * xsi * xsi * eta2
-                if self._kernel_type == int(KernelType.LAPLACE):
-                    integrand += (
-                        self.grad_G_y(y, x, normal_x) * phix
-                    ) * weight * jacobian
-                elif self._kernel_type == int(KernelType.HELMHOLTZ):
-                    integrand += (
-                        self.grad_G_y(x, y, normal_y) * phix
-                    ) * weight * jacobian
+                integrand += (
+                    self.grad_G_y(y, x, normal_x) * phix
+                ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COMMON_EDGE):
                 # This algorithm includes 6 regions D1 ~ D5
                 # D1
@@ -317,14 +291,9 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1
-                if self._kernel_type == int(KernelType.LAPLACE):
-                    integrand += (
-                        self.grad_G_y(y, x, normal_x) * phix
-                    ) * weight * jacobian
-                elif self._kernel_type == int(KernelType.HELMHOLTZ):
-                    integrand += (
-                        self.grad_G_y(x, y, normal_y) * phix
-                    ) * weight * jacobian
+                integrand += (
+                    self.grad_G_y(y, x, normal_x) * phix
+                ) * weight * jacobian
 
                 # D2
                 w = ti.Vector(
@@ -341,14 +310,9 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
-                if self._kernel_type == int(KernelType.LAPLACE):
-                    integrand += (
-                        self.grad_G_y(y, x, normal_x) * phix
-                    ) * weight * jacobian
-                elif self._kernel_type == int(KernelType.HELMHOLTZ):
-                    integrand += (
-                        self.grad_G_y(x, y, normal_y) * phix
-                    ) * weight * jacobian
+                integrand += (
+                    self.grad_G_y(y, x, normal_x) * phix
+                ) * weight * jacobian
 
                 # D3
                 w = ti.Vector(
@@ -365,14 +329,9 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
-                if self._kernel_type == int(KernelType.LAPLACE):
-                    integrand += (
-                        self.grad_G_y(y, x, normal_x) * phix
-                    ) * weight * jacobian
-                elif self._kernel_type == int(KernelType.HELMHOLTZ):
-                    integrand += (
-                        self.grad_G_y(x, y, normal_y) * phix
-                    ) * weight * jacobian
+                integrand += (
+                    self.grad_G_y(y, x, normal_x) * phix
+                ) * weight * jacobian
 
                 # D4
                 w = ti.Vector(
@@ -390,14 +349,9 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
-                if self._kernel_type == int(KernelType.LAPLACE):
-                    integrand += (
-                        self.grad_G_y(y, x, normal_x) * phix
-                    ) * weight * jacobian
-                elif self._kernel_type == int(KernelType.HELMHOLTZ):
-                    integrand += (
-                        self.grad_G_y(x, y, normal_y) * phix
-                    ) * weight * jacobian
+                integrand += (
+                    self.grad_G_y(y, x, normal_x) * phix
+                ) * weight * jacobian
 
                 # D5
                 w = ti.Vector(
@@ -415,14 +369,9 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
                 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
-                if self._kernel_type == int(KernelType.LAPLACE):
-                    integrand += (
-                        self.grad_G_y(y, x, normal_x) * phix
-                    ) * weight * jacobian
-                elif self._kernel_type == int(KernelType.HELMHOLTZ):
-                    integrand += (
-                        self.grad_G_y(x, y, normal_y) * phix
-                    ) * weight * jacobian
+                integrand += (
+                    self.grad_G_y(y, x, normal_x) * phix
+                ) * weight * jacobian
         
         return integrand
     

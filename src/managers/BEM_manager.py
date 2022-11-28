@@ -254,7 +254,7 @@ class BEMManager:
         result = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
         distance = (x - y).norm()
         if ti.static(self._kernel_type == int(KernelType.LAPLACE)):
-            result = (1.0 / 4.0 / ti.math.pi) / distance * curl_phix_dot_curl_phiy
+            result.x = (1.0 / 4.0 / ti.math.pi) / distance * curl_phix_dot_curl_phiy
         elif ti.static(self._kernel_type == int(KernelType.HELMHOLTZ)):
             exp_vector = ti.math.cexp(
                 ti.Vector([0.0, self._k * distance], self._ti_dtype)
