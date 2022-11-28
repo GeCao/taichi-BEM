@@ -96,7 +96,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--GaussQR",
         type=int,
-        default=3,
+        default=7,
         help="Gauss QR number",
     )
 
@@ -117,7 +117,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--k",
         type=float,
-        default=19.5,
+        default=3,
         help="wavenumber",
     )
 

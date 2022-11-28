@@ -295,7 +295,10 @@ class MeshManager:
     
     @ti.func
     def map_global_vert_index_to_local_Neumann(self, i):
-        return self.map_global_Neumann_to_local[i]
+        result = -1
+        if ti.static(self.num_of_Neumanns > 0):
+            result = self.map_global_Neumann_to_local[i]
+        return result
     
     @ti.func
     def get_vertices(self):
@@ -324,6 +327,10 @@ class MeshManager:
     @ti.func
     def get_panel_types(self):
         return self.panel_types
+    
+    @ti.func
+    def get_vertice_types(self):
+        return self.vertice_types
     
     def load_asset(
         self,
