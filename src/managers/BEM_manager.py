@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import math
 import taichi as ti
 import torch
 
@@ -43,6 +44,9 @@ class BEMManager:
             raise RuntimeError("Boundary Type only support DIrichlet/Neumann/Mix for now")
         
         self._k = self._simulation_parameters["k"]
+        self._sqrt_ni = math.sqrt(self._simulation_parameters["n_i"])
+        self._sqrt_no = math.sqrt(self._simulation_parameters["n_o"])
+        self._use_augment = int(self._simulation_parameters["use_augment"])
         
         self.num_of_vertices = 0
         self.num_of_panels = 0
@@ -80,6 +84,14 @@ class BEMManager:
             shape=(self.num_of_Dirichlets + self.num_of_Neumanns, self.num_of_Dirichlets + self.num_of_Neumanns)
         )
         self.rhs = ti.Vector.field(self._n, self._ti_dtype, shape=(self.num_of_Dirichlets + self.num_of_Neumanns, ))
+        self._mat_P = ti.Vector.field(self._n, self._ti_dtype, shape=())
+        if self._use_augment > 0:
+            self.rhs = ti.Vector.field(self._n, self._ti_dtype, shape=(2 * (self.num_of_Dirichlets + self.num_of_Neumanns), ))
+            self._mat_P = ti.Vector.field(
+                self._n,
+                self._ti_dtype,
+                shape=(self.num_of_Dirichlets + self.num_of_Neumanns, self.num_of_Dirichlets + self.num_of_Neumanns)
+            )
 
         # For visualization
         self.solved_vert_color = ti.Vector.field(self._dim, ti.f32, shape=(self.num_of_vertices, ))
@@ -361,29 +373,32 @@ class BEMManager:
 
     @ti.kernel
     def assmeble(self):
-        if ti.static(self.num_of_Dirichlets > 0):
-            for I, J in self.single_layer._Vmat:
-                self.mat_A[I, J] = self.single_layer._Vmat[I, J]
-        
-        if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
-            for I, J in self.double_layer._Kmat:
-                self.mat_A[I, J + self.num_of_Dirichlets] = -self.double_layer._Kmat[I, J]
-        
-        if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
-            for I, J in self.adj_double_layer._Kmat:
-                self.mat_A[I + self.num_of_Dirichlets, J] = self.adj_double_layer._Kmat[I, J]
-        
-        if ti.static(self.num_of_Neumanns > 0):
-            for I, J in self.hypersingular_layer._Wmat:
-                self.mat_A[I + self.num_of_Dirichlets, J + self.num_of_Dirichlets] = -self.hypersingular_layer._Wmat[I, J]
-        
-        if ti.static(self.num_of_Dirichlets > 0):
-            for I in self.rhs_constructor._gvec:
-                self.rhs[I] = self.rhs_constructor._gvec[I]
-        
-        if ti.static(self.num_of_Neumanns > 0):
-            for I in self.rhs_constructor._fvec:
-                self.rhs[I + self.num_of_Dirichlets] = self.rhs_constructor._fvec[I]
+        if ti.static(self._use_augment > 0):
+            pass
+        else:
+            if ti.static(self.num_of_Dirichlets > 0):
+                for I, J in self.single_layer._Vmat:
+                    self.mat_A[I, J] = self.single_layer._Vmat[I, J]
+            
+            if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
+                for I, J in self.double_layer._Kmat:
+                    self.mat_A[I, J + self.num_of_Dirichlets] = -self.double_layer._Kmat[I, J]
+            
+            if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
+                for I, J in self.adj_double_layer._Kmat:
+                    self.mat_A[I + self.num_of_Dirichlets, J] = self.adj_double_layer._Kmat[I, J]
+            
+            if ti.static(self.num_of_Neumanns > 0):
+                for I, J in self.hypersingular_layer._Wmat:
+                    self.mat_A[I + self.num_of_Dirichlets, J + self.num_of_Dirichlets] = self.hypersingular_layer._Wmat[I, J]
+            
+            if ti.static(self.num_of_Dirichlets > 0):
+                for I in self.rhs_constructor._gvec:
+                    self.rhs[I] = self.rhs_constructor._gvec[I]
+            
+            if ti.static(self.num_of_Neumanns > 0):
+                for I in self.rhs_constructor._fvec:
+                    self.rhs[I + self.num_of_Dirichlets] = self.rhs_constructor._fvec[I]
         
         for I in range(self.num_of_panels):
             for ii in range(self._dim):

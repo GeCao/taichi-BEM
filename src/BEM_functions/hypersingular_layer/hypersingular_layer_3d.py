@@ -219,10 +219,10 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
                 phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
 
                 integrand += (
-                    -self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
+                    self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
                 ) * weight * jacobian
                 integrand += k2 * (
-                    self.G(x, y) * phix * phiy * ti.math.dot(normal_x, normal_y)
+                    -self.G(x, y) * phix * phiy * ti.math.dot(normal_x, normal_y)
                 ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COINCIDE):
                 # Get your jacobian
@@ -248,10 +248,10 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
 
                     # D1, D3, D5
                     integrand += (
-                        -self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
+                        self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
                     ) * weight * jacobian
                     integrand += k2 * (
-                        self.G(x, y) * phix * phiy * ti.math.dot(normal_x, normal_y)
+                        -self.G(x, y) * phix * phiy * ti.math.dot(normal_x, normal_y)
                     ) * weight * jacobian
 
                     r1_y, r2_y = xz[0], xz[1]
@@ -268,10 +268,10 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
 
                     # D2, D4, D6
                     integrand += (
-                        -self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
+                        self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
                     ) * weight * jacobian
                     integrand += k2 * (
-                        self.G(x, y) * phix * phiy * ti.math.dot(normal_x, normal_y)
+                        -self.G(x, y) * phix * phiy * ti.math.dot(normal_x, normal_y)
                     ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COMMON_VERTEX):
                 # This algorithm includes 6 regions D1, D2
@@ -292,10 +292,10 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
 
                 jacobian = xsi * xsi * xsi * eta2
                 integrand += (
-                    -self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
+                    self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
                 ) * weight * jacobian
                 integrand += k2 * (
-                    self.G(x, y) * phix * phiy * ti.math.dot(normal_x, normal_y)
+                    -self.G(x, y) * phix * phiy * ti.math.dot(normal_x, normal_y)
                 ) * weight * jacobian
 
                 # D2
@@ -315,10 +315,10 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
 
                 jacobian = xsi * xsi * xsi * eta2
                 integrand += (
-                    -self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
+                    self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
                 ) * weight * jacobian
                 integrand += k2 * (
-                    self.G(x, y) * phix * phiy * ti.math.dot(normal_x, normal_y)
+                    -self.G(x, y) * phix * phiy * ti.math.dot(normal_x, normal_y)
                 ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COMMON_EDGE):
                 # This algorithm includes 6 regions D1 ~ D5
@@ -339,10 +339,10 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1
                 integrand += (
-                    -self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
+                    self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
                 ) * weight * jacobian
                 integrand += k2 * (
-                    self.G(x, y) * phix * phiy * ti.math.dot(normal_x, normal_y)
+                    -self.G(x, y) * phix * phiy * ti.math.dot(normal_x, normal_y)
                 ) * weight * jacobian
 
                 # D2
@@ -362,10 +362,10 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    -self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
+                    self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
                 ) * weight * jacobian
                 integrand += k2 * (
-                    self.G(x, y) * phix * phiy * ti.math.dot(normal_x, normal_y)
+                    -self.G(x, y) * phix * phiy * ti.math.dot(normal_x, normal_y)
                 ) * weight * jacobian
 
                 # D3
@@ -385,10 +385,10 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    -self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
+                    self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
                 ) * weight * jacobian
                 integrand += k2 * (
-                    self.G(x, y) * phix * phiy * ti.math.dot(normal_x, normal_y)
+                    -self.G(x, y) * phix * phiy * ti.math.dot(normal_x, normal_y)
                 ) * weight * jacobian
 
                 # D4
@@ -409,10 +409,10 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    -self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
+                    self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
                 ) * weight * jacobian
                 integrand += k2 * (
-                    self.G(x, y) * phix * phiy * ti.math.dot(normal_x, normal_y)
+                    -self.G(x, y) * phix * phiy * ti.math.dot(normal_x, normal_y)
                 ) * weight * jacobian
 
                 # D5
@@ -433,10 +433,10 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
                 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    -self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
+                    self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy)
                 ) * weight * jacobian
                 integrand += k2 * (
-                    self.G(x, y) * phix * phiy * ti.math.dot(normal_x, normal_y)
+                    -self.G(x, y) * phix * phiy * ti.math.dot(normal_x, normal_y)
                 ) * weight * jacobian
         
         return integrand

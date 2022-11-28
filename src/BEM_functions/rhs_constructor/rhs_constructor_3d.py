@@ -236,9 +236,9 @@ class RHSConstructor3d(AbstractRHSConstructor):
             self._BEM_manager.adj_double_layer.apply_K_dot_panel_boundary(
                 panel_boundary=self._panel_f_boundary, result_vec=self._fvec, add=False
             )
-            # += W * g
+            # += -W * g
             self._BEM_manager.hypersingular_layer.apply_W_dot_vert_boundary(
-                vert_boundary=self._vert_g_boundary, result_vec=self._fvec, add=True
+                vert_boundary=self._vert_g_boundary, result_vec=self._fvec, add=False
             )
 
             # += 0.5M * f

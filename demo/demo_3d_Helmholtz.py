@@ -33,6 +33,7 @@ def main(args):
         'log_to_disk': args.log_to_disk,
         'make_video': args.make_video,
         'show_wireframe': args.show_wireframe,
+        'use_augment': args.use_augment,
     }
 
     core_manager = CoreManager(simulation_parameters)
@@ -156,6 +157,13 @@ if __name__ == '__main__':
         type=bool,
         default=False,
         help="Do we need a video for visualization?",
+    )
+
+    parser.add_argument(
+        "--use_augment",
+        type=bool,
+        default=False,
+        help="To solve linear system equations, an augmented matrix might be used",
     )
 
     args = parser.parse_args()
