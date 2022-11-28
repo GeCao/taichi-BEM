@@ -144,7 +144,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--show_wireframe",
         type=bool,
-        default=False,
+        default=True,
         help="Do we need a video for visualization?",
     )
 
