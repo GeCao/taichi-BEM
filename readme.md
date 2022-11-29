@@ -15,7 +15,8 @@
 cd taichi-BEM
 pip install -r requirements.txt
 cd demo
-python demo_3d_Laplace.py --boundary Dirichlet --show_wireframe True
+python demo_3d_Laplace.py --boundary Dirichlet
+python demo_3d_Helmholtz.py --boundary Neumann
 ```
 
 ### Parameters
