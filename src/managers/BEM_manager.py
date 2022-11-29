@@ -9,7 +9,7 @@ from src.BEM_functions.double_layer import DoubleLayer2d, DoubleLayer3d
 from src.BEM_functions.adj_double_layer import AdjDoubleLayer2d, AdjDoubleLayer3d
 from src.BEM_functions.hypersingular_layer import HypersingularLayer2d, HypersingularLayer3d
 from src.BEM_functions.rhs_constructor import RHSConstructor3d
-from src.managers.mesh_manager import KernelType, CellFluxType, VertAttachType
+from src.BEM_functions.utils import CellFluxType, VertAttachType, KernelType, PanelsRelation, AssembleType
 from src.BEM_functions.utils import get_gaussion_integration_points_and_weights
 
 
@@ -31,6 +31,9 @@ class BEMManager:
         elif self._simulation_parameters["kernel"] == "Helmholtz":
             self._kernel_type = int(KernelType.HELMHOLTZ)
             self._n = 2
+        elif self._simulation_parameters["kernel"] == "Helmholtz_Transmission":
+            self._kernel_type = int(KernelType.HELMHOLTZ_TRANSMISSION)
+            self._n = 2
         else:
             raise RuntimeError("Kernel Type only support Laplace and Helmholtz for now")
         
@@ -43,9 +46,14 @@ class BEMManager:
         else:
             raise RuntimeError("Boundary Type only support DIrichlet/Neumann/Mix for now")
         
-        self._k = self._simulation_parameters["k"]
-        self._sqrt_ni = math.sqrt(self._simulation_parameters["n_i"])
-        self._sqrt_no = math.sqrt(self._simulation_parameters["n_o"])
+        self._k = 0.0
+        if self._kernel_type == int(KernelType.HELMHOLTZ) or self._kernel_type == int(KernelType.HELMHOLTZ_TRANSMISSION):
+            self._k = self._simulation_parameters["k"]
+        self._sqrt_ni = 1.0
+        self._sqrt_no = 1.0
+        if self._kernel_type == int(KernelType.HELMHOLTZ_TRANSMISSION):
+            self._sqrt_ni = float(math.sqrt(self._simulation_parameters["n_i"]))
+            self._sqrt_no = float(math.sqrt(self._simulation_parameters["n_o"]))
         self._use_augment = int(self._simulation_parameters["use_augment"])
         
         self.num_of_vertices = 0
@@ -57,7 +65,7 @@ class BEMManager:
 
         self.initialized = False
 
-    def initialization(self, analyical_function_Dirichlet, analyical_function_Neumann):
+    def initialization(self, analytical_function_Dirichlet, analytical_function_Neumann):
         if not self._core_manager._log_manager.initialized:
             raise RuntimeError("The initialization of Log Manager has the first priority than others!")
         
@@ -69,11 +77,13 @@ class BEMManager:
         self.num_of_Dirichlets = self._core_manager._mesh_manager.get_num_of_Dirichlets()
         self.num_of_Neumanns = self._core_manager._mesh_manager.get_num_of_Neumanns()
 
-        self._Dirichlet_offset = self.num_of_Neumanns
-        self._Neumann_offset = 0
+        self._Dirichlet_offset_i = 0
+        self._Neumann_offset_i = self.num_of_Dirichlets
+        self._Dirichlet_offset_j = self.num_of_Neumanns
+        self._Neumann_offset_j = 0
 
-        self.analyical_function_Dirichlet = analyical_function_Dirichlet
-        self.analyical_function_Neumann = analyical_function_Neumann
+        self.analytical_function_Dirichlet = analytical_function_Dirichlet
+        self.analytical_function_Neumann = analytical_function_Neumann
 
         # For final comparision
         self.solved = ti.Vector.field(self._n, self._ti_dtype, shape=(self.num_of_vertices, ))
@@ -237,7 +247,7 @@ class BEMManager:
         return result
     
     @ti.func
-    def G(self, x, y):
+    def G(self, x, y, sqrt_n: float = 1):
         Gxy = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
         distance = (x - y).norm()
         if ti.static(self._kernel_type == int(KernelType.LAPLACE)):
@@ -246,11 +256,15 @@ class BEMManager:
             Gxy = (1.0 / 4.0 / ti.math.pi) / distance * ti.math.cexp(
                 ti.Vector([0.0, self._k * distance], self._ti_dtype)
             )
+        elif ti.static(self._kernel_type == int(KernelType.HELMHOLTZ_TRANSMISSION)):
+            Gxy = (1.0 / 4.0 / ti.math.pi) / distance * ti.math.cexp(
+                ti.Vector([0.0, self._k * sqrt_n * distance], self._ti_dtype)
+            )
         
         return Gxy
     
     @ti.func
-    def grad_G_y(self, x, y, normal_y):
+    def grad_G_y(self, x, y, normal_y, sqrt_n: float = 1):
         grad_Gy = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
         distance = (x - y).norm()
         if ti.static(self._kernel_type == int(KernelType.LAPLACE)):
@@ -261,11 +275,17 @@ class BEMManager:
                 ti.math.cexp(ti.Vector([0.0, self._k * distance], self._ti_dtype))
             )
             grad_Gy = (1.0 / 4.0 / ti.math.pi) * (x - y).dot(normal_y) / ti.math.pow(distance, 3) * chained_complex_vector
+        elif ti.static(self._kernel_type == int(KernelType.HELMHOLTZ_TRANSMISSION)):
+            chained_complex_vector = ti.math._complex.cmul(
+                ti.Vector([1.0, -self._k * sqrt_n * distance], self._ti_dtype),
+                ti.math.cexp(ti.Vector([0.0, self._k * sqrt_n * distance], self._ti_dtype))
+            )
+            grad_Gy = (1.0 / 4.0 / ti.math.pi) * (x - y).dot(normal_y) / ti.math.pow(distance, 3) * chained_complex_vector
         
         return grad_Gy
     
     @ti.func
-    def grad2_G_xy(self, x, y, curl_phix_dot_curl_phiy):
+    def grad2_G_xy(self, x, y, curl_phix_dot_curl_phiy, sqrt_n: float = 1):
         result = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
         distance = (x - y).norm()
         if ti.static(self._kernel_type == int(KernelType.LAPLACE)):
@@ -273,6 +293,11 @@ class BEMManager:
         elif ti.static(self._kernel_type == int(KernelType.HELMHOLTZ)):
             exp_vector = ti.math.cexp(
                 ti.Vector([0.0, self._k * distance], self._ti_dtype)
+            )
+            result = (1.0 / 4.0 / ti.math.pi) / distance * curl_phix_dot_curl_phiy * exp_vector
+        elif ti.static(self._kernel_type == int(KernelType.HELMHOLTZ_TRANSMISSION)):
+            exp_vector = ti.math.cexp(
+                ti.Vector([0.0, self._k * sqrt_n * distance], self._ti_dtype)
             )
             result = (1.0 / 4.0 / ti.math.pi) / distance * curl_phix_dot_curl_phiy * exp_vector
         return result
@@ -354,7 +379,7 @@ class BEMManager:
         self.solved.fill(0)
         
         if ti.static(self._dim == 3):
-            Dirichlet_boundary_offset = self._Dirichlet_offset
+            Dirichlet_boundary_offset = self._Dirichlet_offset_j
             for I in range(self.num_of_Dirichlets):
                 # Dirichlet boundary
                 global_i = self.map_local_Dirichlet_index_to_panel_index(I)
@@ -367,58 +392,254 @@ class BEMManager:
                 self.solved[x2_idx] += self.raw_solved[Dirichlet_boundary_offset + I] * self.get_panel_area(global_i) / 3.0 / self.get_vert_area(x2_idx)
                 self.solved[x3_idx] += self.raw_solved[Dirichlet_boundary_offset + I] * self.get_panel_area(global_i) / 3.0 / self.get_vert_area(x3_idx)
             
-            Neumann_boundary_offset = self._Neumann_offset
-            if ti.static(self.num_of_vertices > 0):
-                for global_i in range(self.num_of_vertices):
-                    if self.get_vertice_type(global_i) == int(VertAttachType.TOBESOLVED):
-                        local_I = self.map_global_vert_index_to_local_Neumann(global_i)
-                        self.solved[global_i] = self.raw_solved[Neumann_boundary_offset + local_I]
+            Neumann_boundary_offset = self._Neumann_offset_j
+            for global_i in range(self.num_of_vertices):
+                if self.get_vertice_type(global_i) == int(VertAttachType.TOBESOLVED):
+                    local_I = self.map_global_vert_index_to_local_Neumann(global_i)
+                    self.solved[global_i] = self.raw_solved[Neumann_boundary_offset + local_I]
 
     @ti.kernel
-    def assmeble(self):
-        if ti.static(self._use_augment > 0):
-            pass
-        else:
-            if ti.static(self.num_of_Dirichlets > 0):
-                for I, J in self.single_layer._Vmat:
-                    self.mat_A[I + self._Dirichlet_offset, J + self._Dirichlet_offset] = self.single_layer._Vmat[I, J]
-            
-            if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
-                for I, J in self.double_layer._Kmat:
-                    self.mat_A[I + self._Dirichlet_offset, J + self._Neumann_offset] = -self.double_layer._Kmat[I, J]
-            
-            if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
-                for I, J in self.adj_double_layer._Kmat:
-                    self.mat_A[I + self._Neumann_offset, J + self._Dirichlet_offset] = self.adj_double_layer._Kmat[I, J]
-            
-            if ti.static(self.num_of_Neumanns > 0):
-                for I, J in self.hypersingular_layer._Wmat:
-                    self.mat_A[I + self._Neumann_offset, J + self._Neumann_offset] = self.hypersingular_layer._Wmat[I, J]
-            
-            if ti.static(self.num_of_Dirichlets > 0):
-                for I in self.rhs_constructor._gvec:
-                    self.rhs[I + self._Dirichlet_offset] = self.rhs_constructor._gvec[I]
-            
-            if ti.static(self.num_of_Neumanns > 0):
-                for I in self.rhs_constructor._fvec:
-                    self.rhs[I + self._Neumann_offset] = self.rhs_constructor._fvec[I]
+    def matA_add_M(self, multiplier: float):
+        # += M
+        if ti.static(self.num_of_Dirichlets > 0):
+            for I, J in self.single_layer._Vmat:
+                self.mat_A[I + self._Dirichlet_offset_i, J + self._Dirichlet_offset_j] += -multiplier * self.single_layer._Vmat[I, J]
         
-        for I in range(self.num_of_panels):
-            for ii in range(self._dim):
-                # Dirichlet boundary
-                if self.get_panel_type(I) == int(CellFluxType.TOBESOLVED):
-                    vert_index = self.get_vertice_index_from_flat_panel_index(self._dim * I + ii)
-                    x = self.get_vertice(vert_index)
-                    normal_x = self.get_vert_normal(vert_index)
-                    fx = self.rhs_constructor.analyical_function_Neumann(x, normal_x)
-                    self.analytical_solved[vert_index].x = fx.x
+        if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
+            for I, J in self.double_layer._Kmat:
+                self.mat_A[I + self._Dirichlet_offset_i, J + self._Neumann_offset_j] += multiplier * self.double_layer._Kmat[I, J]
         
+        if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
+            for I, J in self.adj_double_layer._Kmat:
+                self.mat_A[I + self._Neumann_offset_i, J + self._Dirichlet_offset_j] += -multiplier * self.adj_double_layer._Kmat[I, J]
+        
+        if ti.static(self.num_of_Neumanns > 0):
+            for I, J in self.hypersingular_layer._Wmat:
+                self.mat_A[I + self._Neumann_offset_i, J + self._Neumann_offset_j] += -multiplier * self.hypersingular_layer._Wmat[I, J]
+    
+    @ti.kernel
+    def matA_add_P_plus(self, multiplier: float):
+        # += 0.5I
+        for I in range(self.mat_A.shape[0]):
+            self.mat_A[I, I] += multiplier * 0.5
+        
+        # += M
+        if ti.static(self.num_of_Dirichlets > 0):
+            for I, J in self.single_layer._Vmat:
+                self.mat_A[I + self._Dirichlet_offset_i, J + self._Dirichlet_offset_j] += -multiplier * self.single_layer._Vmat[I, J]
+        
+        if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
+            for I, J in self.double_layer._Kmat:
+                self.mat_A[I + self._Dirichlet_offset_i, J + self._Neumann_offset_j] += multiplier * self.double_layer._Kmat[I, J]
+        
+        if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
+            for I, J in self.adj_double_layer._Kmat:
+                self.mat_A[I + self._Neumann_offset_i, J + self._Dirichlet_offset_j] += -multiplier * self.adj_double_layer._Kmat[I, J]
+        
+        if ti.static(self.num_of_Neumanns > 0):
+            for I, J in self.hypersingular_layer._Wmat:
+                self.mat_A[I + self._Neumann_offset_i, J + self._Neumann_offset_j] += -multiplier * self.hypersingular_layer._Wmat[I, J]
+    
+    @ti.kernel
+    def matA_add_P_minus(self, multiplier: float):
+        # += 0.5I
+        for I in range(self.mat_A.shape[0]):
+            self.mat_A[I, I] += multiplier * 0.5
+        
+        # += M
+        if ti.static(self.num_of_Dirichlets > 0):
+            for I, J in self.single_layer._Vmat:
+                self.mat_A[I + self._Dirichlet_offset_i, J + self._Dirichlet_offset_j] -= -multiplier * self.single_layer._Vmat[I, J]
+        
+        if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
+            for I, J in self.double_layer._Kmat:
+                self.mat_A[I + self._Dirichlet_offset_i, J + self._Neumann_offset_j] -= multiplier * self.double_layer._Kmat[I, J]
+        
+        if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
+            for I, J in self.adj_double_layer._Kmat:
+                self.mat_A[I + self._Neumann_offset_i, J + self._Dirichlet_offset_j] -= -multiplier * self.adj_double_layer._Kmat[I, J]
+        
+        if ti.static(self.num_of_Neumanns > 0):
+            for I, J in self.hypersingular_layer._Wmat:
+                self.mat_A[I + self._Neumann_offset_i, J + self._Neumann_offset_j] -= -multiplier * self.hypersingular_layer._Wmat[I, J]
+    
+    @ti.kernel
+    def matA_add_half_I(self, multiplier: float):
+        # += 0.5I
+        for I in range(self.mat_A.shape[0]):
+            self.mat_A[I, I] += multiplier * 0.5
+
+    def assemble_matA(self, assemble_type: int, multiplier: float):
+        """
+        In General:
+        M = [K,  -V ]
+            [-W, -K']
+        rhs = 0.5 u + [K,  -V ] u
+                      [-W, -K']
+        We got (-M) u = rhs, could be equally written as: (P(-) - 0.5I) u = rhs, or (0.5I - P(+)) u = rhs
+        
+        If we use augmented matrix:
+        Make P(+-) = 0.5I (+-) M, thus
+        P(+) + P(-) = I
+
+        A1 = P(o-) - P(i+) = [-(Ki + Ko), (Vi  + Vo )]
+                             [ (Wi + Wo), (Ki' + Ko')]
+        A2 = P(o-) + P(i+) = I - [-(Ki + Ko), (Vi  + Vo )]
+                                 [ (Wi + Wo), (Ki' + Ko')]
+        In this case
+        A1 * u = [P(o-) - 0.5I] * u + [0.5I - P(i+)] * u
+        A2 * u = [P(o-) - 0.5I] * u - [0.5I - P(i+)] * u
+
+        A1 * u = P(o-) f
+        A2 * u = P(o-) f
+        """
+        if assemble_type == int(AssembleType.ADD_M):
+            # += M
+            self.matA_add_M(multiplier)
+        elif assemble_type == int(AssembleType.ADD_HALF_IDENTITY):
+            self.matA_add_half_I(multiplier)
+        elif assemble_type == int(AssembleType.ADD_P_MINUS):
+            self.matA_add_P_minus(multiplier)
+        elif assemble_type == int(AssembleType.ADD_P_PLUS):
+            self.matA_add_P_plus(multiplier)
+    
+    @ti.kernel
+    def matP_add_M(self, multiplier: float):
+        # += M
+        if ti.static(self.num_of_Dirichlets > 0):
+            for I, J in self.single_layer._Vmat:
+                self._mat_P[I + self._Dirichlet_offset_i, J + self._Dirichlet_offset_j] += -multiplier * self.single_layer._Vmat[I, J]
+        
+        if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
+            for I, J in self.double_layer._Kmat:
+                self._mat_P[I + self._Dirichlet_offset_i, J + self._Neumann_offset_j] += multiplier * self.double_layer._Kmat[I, J]
+        
+        if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
+            for I, J in self.adj_double_layer._Kmat:
+                self._mat_P[I + self._Neumann_offset_i, J + self._Dirichlet_offset_j] += -multiplier * self.adj_double_layer._Kmat[I, J]
+        
+        if ti.static(self.num_of_Neumanns > 0):
+            for I, J in self.hypersingular_layer._Wmat:
+                self._mat_P[I + self._Neumann_offset_i, J + self._Neumann_offset_j] += -multiplier * self.hypersingular_layer._Wmat[I, J]
+    
+    @ti.kernel
+    def matP_add_P_plus(self, multiplier: float):
+        # += 0.5I
+        for I in range(self._mat_P.shape[0]):
+            self._mat_P[I, I] += multiplier * 0.5
+        
+        # += M
+        if ti.static(self.num_of_Dirichlets > 0):
+            for I, J in self.single_layer._Vmat:
+                self._mat_P[I + self._Dirichlet_offset_i, J + self._Dirichlet_offset_j] += -multiplier * self.single_layer._Vmat[I, J]
+        
+        if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
+            for I, J in self.double_layer._Kmat:
+                self._mat_P[I + self._Dirichlet_offset_i, J + self._Neumann_offset_j] += multiplier * self.double_layer._Kmat[I, J]
+        
+        if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
+            for I, J in self.adj_double_layer._Kmat:
+                self._mat_P[I + self._Neumann_offset_i, J + self._Dirichlet_offset_j] += -multiplier * self.adj_double_layer._Kmat[I, J]
+        
+        if ti.static(self.num_of_Neumanns > 0):
+            for I, J in self.hypersingular_layer._Wmat:
+                self._mat_P[I + self._Neumann_offset_i, J + self._Neumann_offset_j] += -multiplier * self.hypersingular_layer._Wmat[I, J]
+    
+    @ti.kernel
+    def matP_add_P_minus(self, multiplier: float):
+        # += 0.5I
+        for I in range(self._mat_P.shape[0]):
+            self._mat_P[I, I] += multiplier * 0.5
+        
+        # += M
+        if ti.static(self.num_of_Dirichlets > 0):
+            for I, J in self.single_layer._Vmat:
+                self._mat_P[I + self._Dirichlet_offset_i, J + self._Dirichlet_offset_j] -= -multiplier * self.single_layer._Vmat[I, J]
+        
+        if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
+            for I, J in self.double_layer._Kmat:
+                self._mat_P[I + self._Dirichlet_offset_i, J + self._Neumann_offset_j] -= multiplier * self.double_layer._Kmat[I, J]
+        
+        if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
+            for I, J in self.adj_double_layer._Kmat:
+                self._mat_P[I + self._Neumann_offset_i, J + self._Dirichlet_offset_j] -= -multiplier * self.adj_double_layer._Kmat[I, J]
+        
+        if ti.static(self.num_of_Neumanns > 0):
+            for I, J in self.hypersingular_layer._Wmat:
+                self._mat_P[I + self._Neumann_offset_i, J + self._Neumann_offset_j] -= -multiplier * self.hypersingular_layer._Wmat[I, J]
+    
+    @ti.kernel
+    def matP_add_half_I(self, multiplier: float):
+        # += 0.5I
+        for I in range(self._mat_P.shape[0]):
+            self._mat_P[I, I] += multiplier * 0.5
+    
+    def assemble_matP(self, assemble_type: int, multiplier: float):
+        """
+        In General:
+        M = [K,  -V ]
+            [-W, -K']
+        rhs = 0.5 u + [K,  -V ] u
+                      [-W, -K']
+        We got (-M) u = rhs, could be equally written as: (P(-) - 0.5I) u = rhs, or (0.5I - P(+)) u = rhs
+        
+        If we use augmented matrix:
+        Make P(+-) = 0.5I (+-) M, thus
+        P(+) + P(-) = I
+
+        A1 = P(o-) - P(i+) = [-(Ki + Ko), (Vi  + Vo )]
+                             [ (Wi + Wo), (Ki' + Ko')]
+        A2 = P(o-) + P(i+) = I - [-(Ki + Ko), (Vi  + Vo )]
+                                 [ (Wi + Wo), (Ki' + Ko')]
+        In this case
+        A1 * u = [P(o-) - 0.5I] * u + [0.5I - P(i+)] * u
+        A2 * u = [P(o-) - 0.5I] * u - [0.5I - P(i+)] * u
+
+        A1 * u = P(o-) f
+        A2 * u = P(o-) f
+        """
+        if assemble_type == int(AssembleType.ADD_M):
+            # += M
+            self.matP_add_M(multiplier)
+        elif assemble_type == int(AssembleType.ADD_HALF_IDENTITY):
+            self.matP_add_half_I(multiplier)
+        elif assemble_type == int(AssembleType.ADD_P_MINUS):
+            self.matP_add_P_minus(multiplier)
+        elif assemble_type == int(AssembleType.ADD_P_PLUS):
+            self.matP_add_P_plus(multiplier)
+            
+    @ti.kernel
+    def assemble_rhs(self):
+        if ti.static(self.num_of_Dirichlets > 0):
+            for I in self.rhs_constructor._gvec:
+                self.rhs[I + self._Dirichlet_offset_i] = self.rhs_constructor._gvec[I]
+        
+        if ti.static(self.num_of_Neumanns > 0):
+            for I in self.rhs_constructor._fvec:
+                self.rhs[I + self._Neumann_offset_i] = self.rhs_constructor._fvec[I]
+        
+    @ti.kernel
+    def compute_analytical_solve(self):
         for I in range(self.num_of_vertices):
-            # Neumann boundary
             if self.get_vertice_type(I) == int(VertAttachType.TOBESOLVED):
+                # Neumann boundary
                 x = self.get_vertice(I)
-                gx = self.rhs_constructor.analyical_function_Dirichlet(x)
+                gx = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+                if ti.static(self._kernel_type == int(KernelType.HELMHOLTZ_TRANSMISSION)):
+                    gx = self.rhs_constructor.analytical_function_Dirichlet(x, self._sqrt_ni)
+                else:
+                    gx = self.rhs_constructor.analytical_function_Dirichlet(x)
                 self.analytical_solved[I].x = gx.x
+            else:
+                # Dirichlet boundary
+                x = self.get_vertice(I)
+                normal_x = self.get_vert_normal(I)
+                fx = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+                if ti.static(self._kernel_type == int(KernelType.HELMHOLTZ_TRANSMISSION)):
+                    fx = self.rhs_constructor.analytical_function_Neumann(x, normal_x, self._sqrt_ni)
+                else:
+                    fx = self.rhs_constructor.analytical_function_Neumann(x, normal_x)
+                self.analytical_solved[I].x = fx.x
 
     @ti.kernel
     def Jacobian_solver(self) -> float:
@@ -440,7 +661,11 @@ class BEMManager:
         residual = ti.math.sqrt(residual / self.raw_solved.shape[0])
         return residual
 
-    def run(self):
+    def layer_forward(self, sqrt_n: float = 1.0):
+        self.single_layer.set_sqrt_n(sqrt_n=sqrt_n)
+        self.double_layer.set_sqrt_n(sqrt_n=sqrt_n)
+        self.adj_double_layer.set_sqrt_n(sqrt_n=sqrt_n)
+        self.hypersingular_layer.set_sqrt_n(sqrt_n=sqrt_n)
         self._log_manager.InfoLog("Construct Single Layer")
         self.single_layer.forward()
         self._log_manager.InfoLog("Construct Double Layer")
@@ -451,26 +676,63 @@ class BEMManager:
         self.hypersingular_layer.forward()
         self._log_manager.InfoLog("Construct RHS Layer")
         self.rhs_constructor.forward()
-
         self._log_manager.InfoLog("Construct all Layers Done")
-        self.assmeble()
+    
+    def run(self):
+        if self._kernel_type == int(KernelType.HELMHOLTZ_TRANSMISSION):
+            # ni scope
+            self.layer_forward(sqrt_n=self._sqrt_ni)
+            self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=-1.0)  # Reduce P_PLUS_I
+            self.assemble_matP(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=1.0)  # ADD P_PLUS_I
+            # no scope
+            self.layer_forward(sqrt_n=self._sqrt_no)
+            self.assemble_matA(assemble_type=int(AssembleType.ADD_P_MINUS), multiplier=1.0)  # Add P_MINUS_O
+            self.assemble_rhs()  # 0.5I - M_O
+        else:
+            self.layer_forward()
+            self.assemble_matA(assemble_type=int(AssembleType.ADD_M), multiplier=-1.0)  # Reduce M
+            self.assemble_rhs()  # 0.5I + M
+
+        self.compute_analytical_solve()
 
         # Solve
         np_mat_A = self.mat_A.to_numpy()
         np_rhs = self.rhs.to_numpy()
+
         if np_mat_A.shape[-1] == 1:
             np_mat_A = np_mat_A.squeeze(-1)
         elif np_mat_A.shape[-1] == 2:
             np_mat_A = np_mat_A[..., 0] + np_mat_A[..., 1] * 1j
+        
         if np_rhs.shape[-1] == 1:
-            np_rhs.squeeze(-1)
+            np_rhs = np_rhs.squeeze(-1)
         elif np_rhs.shape[-1] == 2:
             np_rhs = np_rhs[..., 0] + np_rhs[..., 1] * 1j
         
         device = torch.device("cuda")
-        torch_mat_A = torch.from_numpy(np_mat_A).to(device)
-        torch_rhs = torch.from_numpy(np_rhs).to(device)
-        torch_solved = torch.linalg.solve(torch_mat_A, torch_rhs)
+        if self._kernel_type == int(KernelType.HELMHOLTZ_TRANSMISSION):
+            torch_mat = torch.zeros(
+                (2 * (self.num_of_Dirichlets + self.num_of_Neumanns), self.num_of_Dirichlets + self.num_of_Neumanns)
+            ).to(torch.float32).to(device)
+            torch_rhs = torch.zeros(
+                (2 * (self.num_of_Dirichlets + self.num_of_Neumanns), self._n)
+            ).to(torch.float32).to(device)
+            np_mat_P = self._mat_P.to_numpy()
+            if np_mat_P.shape[-1] == 1:
+                np_mat_P = np_mat_P.squeeze(-1)
+            elif np_mat_P.shape[-1] == 2:
+                np_mat_P = np_mat_P[..., 0] + np_mat_P[..., 1] * 1j
+            torch_mat[(self.num_of_Dirichlets + self.num_of_Neumanns) :, ...] = torch.from_numpy(np_mat_P).to(device)
+        else:
+            torch_mat = torch.zeros(
+                ((self.num_of_Dirichlets + self.num_of_Neumanns), self.num_of_Dirichlets + self.num_of_Neumanns)
+            ).to(torch.float32).to(device)
+            torch_rhs = torch.zeros(
+                ((self.num_of_Dirichlets + self.num_of_Neumanns))
+            ).to(torch.float32).to(device)
+        torch_mat[0: (self.num_of_Dirichlets + self.num_of_Neumanns), ...] = torch.from_numpy(np_mat_A).to(device)
+        torch_rhs[0: (self.num_of_Dirichlets + self.num_of_Neumanns)] = torch.from_numpy(np_rhs).to(device)
+        torch_solved = torch.linalg.solve(torch_mat, torch_rhs)
         np_solved = torch_solved.cpu().numpy()
         if self._n == 1:
             np_solved = np.expand_dims(np_solved, axis=-1)

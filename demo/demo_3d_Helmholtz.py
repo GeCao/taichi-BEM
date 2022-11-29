@@ -67,8 +67,8 @@ def main(args):
         return vec_result
     
     core_manager.initialization(
-        analyical_function_Dirichlet=analytical_function_Dirichlet,
-        analyical_function_Neumann=analytical_function_Neumann
+        analytical_function_Dirichlet=analytical_function_Dirichlet,
+        analytical_function_Neumann=analytical_function_Neumann
     )
     core_manager.run()
     core_manager.kill()
@@ -134,7 +134,7 @@ if __name__ == '__main__':
         "--kernel",
         type=str,
         default="Helmholtz",
-        choices=["Laplace", "Helmholtz"],
+        choices=["Laplace", "Helmholtz", "Helmholtz_Transmission"],
         help="Do we need a video for visualization?",
     )
 

@@ -2,7 +2,7 @@ import taichi as ti
 import numpy as np
 
 from src.BEM_functions.single_layer import AbstractSingleLayer
-from src.managers.mesh_manager import CellFluxType, VertAttachType, PanelsRelation
+from src.BEM_functions.utils import CellFluxType, VertAttachType, KernelType, PanelsRelation
 
 
 class SingleLayer3d(AbstractSingleLayer):
@@ -189,7 +189,7 @@ class SingleLayer3d(AbstractSingleLayer):
                 )
 
                 integrand += (
-                    self.G(x, y)
+                    self.G(x, y, self._sqrt_n)
                 ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COINCIDE):
                 # Get your jacobian
@@ -211,7 +211,7 @@ class SingleLayer3d(AbstractSingleLayer):
 
                     # D1, D3, D5
                     integrand += (
-                        self.G(x, y)
+                        self.G(x, y, self._sqrt_n)
                     ) * weight * jacobian
 
                     r1_y, r2_y = xz[0], xz[1]
@@ -226,7 +226,7 @@ class SingleLayer3d(AbstractSingleLayer):
 
                     # D2, D4, D6
                     integrand += (
-                        self.G(x, y)
+                        self.G(x, y, self._sqrt_n)
                     ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COMMON_VERTEX):
                 # This algorithm includes 6 regions D1, D2
@@ -245,7 +245,7 @@ class SingleLayer3d(AbstractSingleLayer):
                 
                 jacobian = xsi * xsi * xsi * eta2
                 integrand += (
-                    self.G(x, y)
+                    self.G(x, y, self._sqrt_n)
                 ) * weight * jacobian
 
                 # D2
@@ -263,7 +263,7 @@ class SingleLayer3d(AbstractSingleLayer):
                 
                 jacobian = xsi * xsi * xsi * eta2
                 integrand += (
-                    self.G(x, y)
+                    self.G(x, y, self._sqrt_n)
                 ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COMMON_EDGE):
                 # This algorithm includes 6 regions D1 ~ D5
@@ -282,7 +282,7 @@ class SingleLayer3d(AbstractSingleLayer):
                 
                 jacobian = xsi * xsi * xsi * eta1 * eta1
                 integrand += (
-                    self.G(x, y)
+                    self.G(x, y, self._sqrt_n)
                 ) * weight * jacobian
 
                 # D2
@@ -300,7 +300,7 @@ class SingleLayer3d(AbstractSingleLayer):
                 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.G(x, y)
+                    self.G(x, y, self._sqrt_n)
                 ) * weight * jacobian
 
                 # D3
@@ -318,7 +318,7 @@ class SingleLayer3d(AbstractSingleLayer):
                 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.G(x, y)
+                    self.G(x, y, self._sqrt_n)
                 ) * weight * jacobian
 
                 # D4
@@ -337,7 +337,7 @@ class SingleLayer3d(AbstractSingleLayer):
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.G(x, y)
+                    self.G(x, y, self._sqrt_n)
                 ) * weight * jacobian
 
                 # D5
@@ -356,7 +356,7 @@ class SingleLayer3d(AbstractSingleLayer):
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.G(x, y)
+                    self.G(x, y, self._sqrt_n)
                 ) * weight * jacobian
         
         return integrand

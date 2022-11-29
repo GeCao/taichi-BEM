@@ -36,10 +36,10 @@ class CoreManager:
 
         self.initialized = False
     
-    def initialization(self, analyical_function_Dirichlet, analyical_function_Neumann):
+    def initialization(self, analytical_function_Dirichlet, analytical_function_Neumann):
         self._log_manager.initialization()
         self._mesh_manager.initialization()
-        self._BEM_manager.initialization(analyical_function_Dirichlet, analyical_function_Neumann)
+        self._BEM_manager.initialization(analytical_function_Dirichlet, analytical_function_Neumann)
 
         self.window = ti.ui.Window('BEM Example: Left=Analytical, Right=Solved', res=self.res, pos=(150, 150), vsync=True)
         self.canvas = self.window.get_canvas()

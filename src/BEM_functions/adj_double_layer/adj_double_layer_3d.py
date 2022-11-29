@@ -2,7 +2,7 @@ import taichi as ti
 import numpy as np
 
 from src.BEM_functions.adj_double_layer import AbstractAdjDoubleLayer
-from src.managers.mesh_manager import CellFluxType, PanelsRelation, VertAttachType
+from src.BEM_functions.utils import CellFluxType, VertAttachType, KernelType, PanelsRelation
 
 
 @ti.data_oriented
@@ -192,7 +192,7 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
 
                 integrand += (
-                    self.grad_G_y(y, x, normal_x) * phix
+                    self.grad_G_y(y, x, normal_x, self._sqrt_n) * phix
                 ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COINCIDE):
                 # Get your jacobian
@@ -217,7 +217,7 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
 
                     # D1, D3, D5
                     integrand += (
-                        self.grad_G_y(y, x, normal_x) * phix
+                        self.grad_G_y(y, x, normal_x, self._sqrt_n) * phix
                     ) * weight * jacobian
 
                     r1_y, r2_y = xz[0], xz[1]
@@ -233,7 +233,7 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
 
                     # D2, D4, D6
                     integrand += (
-                        self.grad_G_y(y, x, normal_x) * phix
+                        self.grad_G_y(y, x, normal_x, self._sqrt_n) * phix
                     ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COMMON_VERTEX):
                 # This algorithm includes 6 regions D1, D2
@@ -253,7 +253,7 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
 
                 jacobian = xsi * xsi * xsi * eta2
                 integrand += (
-                    self.grad_G_y(y, x, normal_x) * phix
+                    self.grad_G_y(y, x, normal_x, self._sqrt_n) * phix
                 ) * weight * jacobian
 
                 # D2
@@ -272,7 +272,7 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
 
                 jacobian = xsi * xsi * xsi * eta2
                 integrand += (
-                    self.grad_G_y(y, x, normal_x) * phix
+                    self.grad_G_y(y, x, normal_x, self._sqrt_n) * phix
                 ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COMMON_EDGE):
                 # This algorithm includes 6 regions D1 ~ D5
@@ -292,7 +292,7 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1
                 integrand += (
-                    self.grad_G_y(y, x, normal_x) * phix
+                    self.grad_G_y(y, x, normal_x, self._sqrt_n) * phix
                 ) * weight * jacobian
 
                 # D2
@@ -311,7 +311,7 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.grad_G_y(y, x, normal_x) * phix
+                    self.grad_G_y(y, x, normal_x, self._sqrt_n) * phix
                 ) * weight * jacobian
 
                 # D3
@@ -330,7 +330,7 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.grad_G_y(y, x, normal_x) * phix
+                    self.grad_G_y(y, x, normal_x, self._sqrt_n) * phix
                 ) * weight * jacobian
 
                 # D4
@@ -350,7 +350,7 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.grad_G_y(y, x, normal_x) * phix
+                    self.grad_G_y(y, x, normal_x, self._sqrt_n) * phix
                 ) * weight * jacobian
 
                 # D5
@@ -370,7 +370,7 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.grad_G_y(y, x, normal_x) * phix
+                    self.grad_G_y(y, x, normal_x, self._sqrt_n) * phix
                 ) * weight * jacobian
         
         return integrand

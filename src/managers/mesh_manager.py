@@ -1,44 +1,10 @@
 import os
 import numpy as np
-from enum import Enum
 import math
 import taichi as ti
 import pywavefront
 
-
-class CellFluxType(Enum):
-    NEUMANN_KNOWN = 0
-    TOBESOLVED=1
-    MIX=2
-
-    def __int__(self):
-        return self.value
-
-
-class VertAttachType(Enum):
-    DIRICHLET_KNOWN = 0
-    TOBESOLVED=1
-
-    def __int__(self):
-        return self.value
-
-
-class KernelType(Enum):
-    LAPLACE = 0
-    HELMHOLTZ = 1
-    
-    def __int__(self):
-        return self.value
-
-
-class PanelsRelation(Enum):
-    SEPARATE = 0
-    COINCIDE = 1
-    COMMON_VERTEX = 2
-    COMMON_EDGE = 3
-    
-    def __int__(self):
-        return self.value
+from src.BEM_functions.utils import CellFluxType, VertAttachType, KernelType, PanelsRelation
 
 
 @ti.data_oriented
