@@ -418,19 +418,40 @@ class DoubleLayer3d(AbstractDoubleLayer):
         
         multiplier = 2.0 * (add > 0) - 1.0
 
-        for local_I in result_vec:
-            for local_J in range(self.num_of_Dirichlets):
-                global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
-                global_j = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_J)
+        if ti.static(self._n == 1):
+            for local_I in result_vec:
+                for local_J in range(self.num_of_Dirichlets):
+                    global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
+                    global_j = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_J)
 
-                g1 = vert_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 0)]
-                g2 = vert_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 1)]
-                g3 = vert_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 2)]
-                gy = (g1 + g2 + g3) / 3.0
+                    g1 = vert_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 0)]
+                    g2 = vert_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 1)]
+                    g3 = vert_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 2)]
+                    gy = (g1 + g2 + g3) / 3.0
 
-                panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
-                result_vec[local_I] += multiplier * self.integrate_on_two_panels(
-                    triangle_x=global_i, triangle_y=global_j,
-                    basis_function_index_y=-1,
-                    panels_relation=panels_relation
-                ) * gy
+                    panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
+                    result_vec[local_I] += multiplier * self.integrate_on_two_panels(
+                        triangle_x=global_i, triangle_y=global_j,
+                        basis_function_index_y=-1,
+                        panels_relation=panels_relation
+                    ) * gy
+        elif ti.static(self._n == 2):
+            for local_I in result_vec:
+                for local_J in range(self.num_of_Dirichlets):
+                    global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
+                    global_j = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_J)
+
+                    g1 = vert_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 0)]
+                    g2 = vert_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 1)]
+                    g3 = vert_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 2)]
+                    gy = (g1 + g2 + g3) / 3.0
+
+                    panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
+                    result_vec[local_I] += ti.math.cmul(
+                        multiplier * self.integrate_on_two_panels(
+                            triangle_x=global_i, triangle_y=global_j,
+                            basis_function_index_y=-1,
+                            panels_relation=panels_relation
+                        ),
+                        gy
+                    )
