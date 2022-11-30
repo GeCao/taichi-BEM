@@ -8,6 +8,9 @@
 ### Helmholtz Equation
 <img src="demo/Helmholtz_solved_Dirichlet.png" height="270">
 
+### Helmholtz Transmission Equation (Still Working on! 👨‍💻)
+<img src="demo/HelmholtzTransmission_solved_Dirichlet.png" height="270">
+
 
 ### How to run the code
 
@@ -17,6 +20,7 @@ pip install -r requirements.txt
 cd demo
 python demo_3d_Laplace.py --boundary Dirichlet
 python demo_3d_Helmholtz.py --boundary Neumann
+python demo_3d_Helmholtz_Transmission.py --boundary Neumann --k 3.14 
 ```
 
 ### Parameters
