@@ -4,6 +4,7 @@ import math
 import taichi as ti
 import torch
 
+from src.BEM_functions.identity_layer import IdentityLayer3d
 from src.BEM_functions.single_layer import SingleLayer2d, SingleLayer3d
 from src.BEM_functions.double_layer import DoubleLayer2d, DoubleLayer3d
 from src.BEM_functions.adj_double_layer import AdjDoubleLayer2d, AdjDoubleLayer3d
@@ -157,6 +158,7 @@ class BEMManager:
             self.adj_double_layer = AdjDoubleLayer2d(self)
             self.hypersingular_layer = HypersingularLayer2d(self)
         elif self._dim == 3:
+            self.identity_layer = IdentityLayer3d(self)
             self.single_layer = SingleLayer3d(self)
             self.double_layer = DoubleLayer3d(self)
             self.adj_double_layer = AdjDoubleLayer3d(self)
@@ -426,18 +428,6 @@ class BEMManager:
         if ti.static(self.num_of_Neumanns > 0):
             for I, J in self.hypersingular_layer._Wmat:
                 self.mat_A[I + self._Neumann_offset_i, J + self._Neumann_offset_j] += -multiplier * self.hypersingular_layer._Wmat[I, J]
-    
-    @ti.kernel
-    def matA_add_half_I(self, multiplier: float):
-        # += 0.5I
-        for local_I in range(self.num_of_Dirichlets):
-            global_i = self.map_local_Dirichlet_index_to_panel_index(local_I)
-            self.mat_A[local_I + self._Dirichlet_offset_j, local_I + self._Dirichlet_offset_j] += multiplier * 0.5 * self.get_panel_area(global_i)
-        
-        for global_i in range(self.num_of_vertices):
-            if self.get_vertice_type(global_i) == int(VertAttachType.TOBESOLVED):
-                local_I = self.map_global_vert_index_to_local_Neumann(global_i)
-                self.mat_A[local_I + self._Neumann_offset_j, local_I + self._Neumann_offset_j] += multiplier * 0.5 * self.get_vert_area(global_i)
 
     def assemble_matA(self, assemble_type: int, multiplier: float):
         """
@@ -467,12 +457,12 @@ class BEMManager:
             # += M
             self.matA_add_M(multiplier)
         elif assemble_type == int(AssembleType.ADD_HALF_IDENTITY):
-            self.matA_add_half_I(multiplier)
+            self.identity_layer.matA_add_global_Identity_matrix(0.5 * multiplier)
         elif assemble_type == int(AssembleType.ADD_P_MINUS):
-            self.matA_add_half_I(multiplier)
+            self.identity_layer.matA_add_global_Identity_matrix(0.5 * multiplier)
             self.matA_add_M(-multiplier)
         elif assemble_type == int(AssembleType.ADD_P_PLUS):
-            self.matA_add_half_I(multiplier)
+            self.identity_layer.matA_add_global_Identity_matrix(0.5 * multiplier)
             self.matA_add_M(multiplier)
     
     @ti.kernel
@@ -493,19 +483,6 @@ class BEMManager:
         if ti.static(self.num_of_Neumanns > 0):
             for I, J in self.hypersingular_layer._Wmat:
                 self._mat_P[I + self._Neumann_offset_i, J + self._Neumann_offset_j] += -multiplier * self.hypersingular_layer._Wmat[I, J]
-    
-    @ti.kernel
-    def matP_add_half_I(self, multiplier: float):
-        pass
-        # += 0.5I
-        for I in range(self.num_of_Dirichlets):
-            global_i = self.map_local_Dirichlet_index_to_panel_index(I)
-            self._mat_P[I + self._Dirichlet_offset_j, I + self._Dirichlet_offset_j] += multiplier * 0.5 * self.get_panel_area(global_i)
-        
-        for global_i in range(self.num_of_vertices):
-            if self.get_vertice_type(global_i) == int(VertAttachType.TOBESOLVED):
-                local_I = self.map_global_vert_index_to_local_Neumann(global_i)
-                self._mat_P[local_I + self._Neumann_offset_j, local_I + self._Neumann_offset_j] += multiplier * 0.5 * self.get_vert_area(global_i)
     
     def assemble_matP(self, assemble_type: int, multiplier: float):
         """
@@ -535,12 +512,12 @@ class BEMManager:
             # += M
             self.matP_add_M(multiplier)
         elif assemble_type == int(AssembleType.ADD_HALF_IDENTITY):
-            self.matP_add_half_I(multiplier)
+            self.identity_layer.matP_add_global_Identity_matrix(0.5 * multiplier)
         elif assemble_type == int(AssembleType.ADD_P_MINUS):
-            self.matP_add_half_I(multiplier)
+            self.identity_layer.matP_add_global_Identity_matrix(0.5 * multiplier)
             self.matP_add_M(-multiplier)
         elif assemble_type == int(AssembleType.ADD_P_PLUS):
-            self.matP_add_half_I(multiplier)
+            self.identity_layer.matP_add_global_Identity_matrix(0.5 * multiplier)
             self.matP_add_M(multiplier)
             
     @ti.kernel
@@ -681,17 +658,24 @@ class BEMManager:
             torch_rhs = (torch_mat.transpose(0, 1).matmul(torch_rhs.unsqueeze(-1))).squeeze(-1)
             torch_mat = torch_mat.transpose(0, 1).matmul(torch_mat)
         torch_solved = torch.linalg.solve(torch_mat, torch_rhs)
-        np_solved = torch_solved.cpu().numpy()
+        if ti.static(self._use_augment > 0):
+            self._mat_P.fill(0)
+            self.assemble_matP(assemble_type=int(AssembleType.ADD_P_MINUS), multiplier=1.0)  # ADD P_MINUS_O
+            torch_mat_P = self._mat_P.to_torch().to(device)
+            if self._n == 2:
+                torch_mat_P = torch_mat_P[..., 0] + torch_mat_P[..., 1] * 1j
+                torch_mat_P = torch_mat_P.to(torch_solved.dtype)
+            torch_solved = torch.matmul(torch_mat_P, torch_solved)
         if self._n == 1:
-            np_solved = np.expand_dims(np_solved, axis=-1)
+            torch_solved = torch_solved.unsqueeze(-1)
         elif self._n == 2:
-            np_solved = np.stack(
-                (np.real(np_solved), np.imag(np_solved)),
-                axis=-1
+            torch_solved = torch.stack(
+                (torch_solved.real, torch_solved.imag),
+                -1
             )
-            np_solved[..., 1] = 0
+            torch_solved[..., 1] = 0
 
-        self.raw_solved.from_numpy(np_solved)
+        self.raw_solved.from_torch(torch_solved)
         
         self.compute_analytical_raw_solved()
 
