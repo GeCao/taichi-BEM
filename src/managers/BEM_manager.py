@@ -588,72 +588,105 @@ class BEMManager:
         residual = ti.math.sqrt(residual / self.raw_solved.shape[0])
         return residual
 
-    def layer_forward(self, sqrt_n: float = 1.0):
-        self.single_layer.set_sqrt_n(sqrt_n=sqrt_n)
-        self.double_layer.set_sqrt_n(sqrt_n=sqrt_n)
-        self.adj_double_layer.set_sqrt_n(sqrt_n=sqrt_n)
-        self.hypersingular_layer.set_sqrt_n(sqrt_n=sqrt_n)
+    def matrix_layer_forward(self, sqrt_n: float = 1.0):
         self._log_manager.InfoLog("Construct Single Layer")
-        self.single_layer.forward()
+        self.single_layer.forward(sqrt_n)
         self._log_manager.InfoLog("Construct Double Layer")
-        self.double_layer.forward()
+        self.double_layer.forward(sqrt_n)
         self._log_manager.InfoLog("Construct Adj Double Layer")
-        self.adj_double_layer.forward()
+        self.adj_double_layer.forward(sqrt_n)
         self._log_manager.InfoLog("Construct HyperSingular Layer")
-        self.hypersingular_layer.forward()
+        self.hypersingular_layer.forward(sqrt_n)
+        self._log_manager.InfoLog("Construct all Matrix Layers Done")
+    
+    def rhs_layer_forward(self, assemble_type: int, sqrt_n: float = 1.0):
         self._log_manager.InfoLog("Construct RHS Layer")
-        self.rhs_constructor.forward()
-        self._log_manager.InfoLog("Construct all Layers Done")
+        self.rhs_constructor.forward(assemble_type=assemble_type, sqrt_n=sqrt_n)
+        self._log_manager.InfoLog("Construct all RHS Layers Done")
+    
+    def get_mat_A1_norm(self):
+        self.mat_A.fill(0)
+
+        self.layer_forward(sqrt_n=self._sqrt_ni)
+        self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=-1.0)  # Reduce P_PLUS_I
+        self.layer_forward(sqrt_n=self._sqrt_no)
+        self.assemble_matA(assemble_type=int(AssembleType.ADD_P_MINUS), multiplier=1.0)  # Add P_MINUS_O
+
+        torch_mat_A = self.mat_A.to_torch()
+        torch_mat_A = torch_mat_A[..., 0] + torch_mat_A[..., 1] * 1j
+        mat_A_norm = torch_mat_A.norm(p="nuc")
+
+        return mat_A_norm
+    
+    def get_mat_A2_norm(self):
+        self.mat_A.fill(0)
+
+        self.layer_forward(sqrt_n=self._sqrt_ni)
+        self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=1.0)  # Add P_PLUS_I
+        self.layer_forward(sqrt_n=self._sqrt_no)
+        self.assemble_matA(assemble_type=int(AssembleType.ADD_P_MINUS), multiplier=1.0)  # Add P_MINUS_O
+
+        torch_mat_A = self.mat_A.to_torch()
+        torch_mat_A = torch_mat_A[..., 0] + torch_mat_A[..., 1] * 1j
+        mat_A_norm = torch_mat_A.norm(p="nuc")
+
+        return mat_A_norm
+    
+    def get_mat_Sio_norm(self):
+        self.mat_A.fill(0)
+
+        self.layer_forward(sqrt_n=self._sqrt_ni)
+        self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=1.0)  # Add P_PLUS_I
+        self.layer_forward(sqrt_n=self._sqrt_no)
+        self.assemble_matA(assemble_type=int(AssembleType.ADD_P_MINUS), multiplier=1.0)  # Add P_MINUS_O
+
+        torch_mat_A = self.mat_A.to_torch()
+        torch_mat_A = torch_mat_A[..., 0] + torch_mat_A[..., 1] * 1j
+        mat_A_norm = torch_mat_A.norm(p="nuc")
+
+        return mat_A_norm
     
     def run(self):
+        self.mat_A.fill(0)
+        self._mat_P.fill(0)
+
         if self._use_augment > 0:
             # ni scope
-            self.layer_forward(sqrt_n=self._sqrt_ni)
+            self.matrix_layer_forward(sqrt_n=self._sqrt_ni)
             self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=-1.0)  # Reduce P_PLUS_I
             self.assemble_matP(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=1.0)  # ADD P_PLUS_I
             # no scope
-            self.layer_forward(sqrt_n=self._sqrt_no)
+            self.matrix_layer_forward(sqrt_n=self._sqrt_no)
             self.assemble_matA(assemble_type=int(AssembleType.ADD_P_MINUS), multiplier=1.0)  # Add P_MINUS_O
+            self.rhs_layer_forward(assemble_type=int(AssembleType.ADD_P_MINUS), sqrt_n=self._sqrt_no)
             self.assemble_rhs()  # 0.5I - M_O
         else:
-            self.layer_forward()
+            self.matrix_layer_forward()
             self.assemble_matA(assemble_type=int(AssembleType.ADD_M), multiplier=-1.0)  # Reduce M
+            self.rhs_layer_forward(assemble_type=int(AssembleType.ADD_P_PLUS))
             self.assemble_rhs()  # 0.5I + M
 
         # Solve
-        np_mat_A = self.mat_A.to_numpy()
-        np_rhs = self.rhs.to_numpy()
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        torch_mat_A = self.mat_A.to_torch().to(device)
+        torch_rhs = self.rhs.to_torch().to(device)
 
-        if np_mat_A.shape[-1] == 1:
-            np_mat_A = np_mat_A.squeeze(-1)
-        elif np_mat_A.shape[-1] == 2:
-            np_mat_A = np_mat_A[..., 0] + np_mat_A[..., 1] * 1j
+        if self._n == 1:
+            torch_mat_A = torch_mat_A.squeeze(-1)
+            torch_rhs = torch_rhs.squeeze(-1)
+        elif self._n == 2:
+            torch_mat_A = torch_mat_A[..., 0] + torch_mat_A[..., 1] * 1j
+            torch_rhs = torch_rhs[..., 0] + torch_rhs[..., 1] * 1j
         
-        if np_rhs.shape[-1] == 1:
-            np_rhs = np_rhs.squeeze(-1)
-        elif np_rhs.shape[-1] == 2:
-            np_rhs = np_rhs[..., 0] + np_rhs[..., 1] * 1j
-        
-        device = torch.device("cuda")
-        if self._use_augment > 0:
-            torch_mat = torch.zeros(
-                (2 * (self.num_of_Dirichlets + self.num_of_Neumanns), self.num_of_Dirichlets + self.num_of_Neumanns)
-            ).to(torch.float32).to(device)
-        else:
-            torch_mat = torch.zeros(
-                ((self.num_of_Dirichlets + self.num_of_Neumanns), self.num_of_Dirichlets + self.num_of_Neumanns)
-            ).to(torch.float32).to(device)
-        torch_mat_A = torch.from_numpy(np_mat_A).to(device)
-        torch_mat = torch_mat.to(torch_mat_A.dtype)
+        torch_mat = torch.zeros((self.rhs.shape[0], self.mat_A.shape[1])).to(torch_mat_A.dtype).to(device)
         torch_mat[0: (self.num_of_Dirichlets + self.num_of_Neumanns), ...] = torch_mat_A
-        torch_rhs = torch.from_numpy(np_rhs).to(device)
         if self._use_augment > 0:
-            np_mat_P = self._mat_P.to_numpy()
-            if np_mat_P.shape[-1] == 1:
-                np_mat_P = np_mat_P.squeeze(-1)
-            elif np_mat_P.shape[-1] == 2:
-                np_mat_P = np_mat_P[..., 0] + np_mat_P[..., 1] * 1j
-            torch_mat[(self.num_of_Dirichlets + self.num_of_Neumanns) :, ...] = torch.from_numpy(np_mat_P).to(device)
+            torch_mat_P = self._mat_P.to_torch().to(device)
+            if self._n == 1:
+                torch_mat_P = torch_mat_P.squeeze(-1)
+            elif self._n == 2:
+                torch_mat_P = torch_mat_P[..., 0] + torch_mat_P[..., 1] * 1j
+            torch_mat[(self.num_of_Dirichlets + self.num_of_Neumanns) :, ...] = torch_mat_P
             
             torch_rhs = (torch_mat.transpose(0, 1).matmul(torch_rhs.unsqueeze(-1))).squeeze(-1)
             torch_mat = torch_mat.transpose(0, 1).matmul(torch_mat)
@@ -662,9 +695,10 @@ class BEMManager:
             self._mat_P.fill(0)
             self.assemble_matP(assemble_type=int(AssembleType.ADD_P_MINUS), multiplier=1.0)  # ADD P_MINUS_O
             torch_mat_P = self._mat_P.to_torch().to(device)
-            if self._n == 2:
+            if self._n == 1:
+                torch_mat_P = torch_mat_P.squeeze(-1)
+            elif self._n == 2:
                 torch_mat_P = torch_mat_P[..., 0] + torch_mat_P[..., 1] * 1j
-                torch_mat_P = torch_mat_P.to(torch_solved.dtype)
             torch_solved = torch.matmul(torch_mat_P, torch_solved)
         if self._n == 1:
             torch_solved = torch_solved.unsqueeze(-1)
@@ -697,8 +731,31 @@ class BEMManager:
         self.num_of_vertices = 0
         self.num_of_panels = 0
 
+        self.solved = None
+        self.analytical_solved = None
+
+        self.raw_solved = None
+        self.raw_analytical_solved = None
+        self.mat_A = None
+        self.rhs = None
+        self._mat_P = None
+
+        # For visualization
+        self.solved_vert_color = None
+        self.solved_vertices = None
+        self.analytical_vert_color = None
+        self.analytical_vertices = None
+        self.diff_vert_color = None
+        self.diff_vertices = None
+
+        # For numerical integrations
+        self.m_mats_coincide = None
+        self.Gauss_points_1d = None
+        self.Gauss_weights_1d = None
+
         self.single_layer.kill()
         self.double_layer.kill()
         self.adj_double_layer.kill()
         self.hypersingular_layer.kill()
+        self.identity_layer.kill()
         self._log_manager.ErrorLog("Kill the BEM Manager")

@@ -399,8 +399,11 @@ class MeshManager:
         self.vert_normals = None
         self.vert_normals_initialized = False
         self.panel_types = None
+        self.vertice_types = None
         self.Dirichlet_index = None
         self.Neumann_index = None
         self.panel_types_initialized = False
+        self.vertice_types_initialized = False
+        self.map_global_Neumann_to_local = None
 
         self._log_manager.ErrorLog("Kill the Mesh Manager")

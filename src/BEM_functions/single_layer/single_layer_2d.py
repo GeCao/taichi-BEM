@@ -17,7 +17,6 @@ class SingleLayer2d(AbstractSingleLayer):
         self._ti_dtype = self._BEM_manager._ti_dtype
         self._np_dtype = self._BEM_manager._np_dtype
         self._kernel_type = self._BEM_manager._kernel_type
-        self._k = self._BEM_manager._k
         self._n = self._BEM_manager._n
 
         self.num_of_Dirichlets = self._BEM_manager.get_num_of_Dirichlets()

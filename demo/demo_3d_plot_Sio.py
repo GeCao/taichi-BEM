@@ -1,17 +1,19 @@
 """
 This is a demo for validation of BEM solver.
-A Laplace equation is solved, with Dirichelt boundary applies.
+A Helmoholtz Transmission equation is solved, with Dirichelt boundary applies.
 The boundary value is given with analytical solution.
 Please refer this specific problem from book: 
 
     Sergej Rjasanow and Olaf Steinbach. 2007. The fast solution of boundary integral equations. Springer Science & Business Media
-    equation 4.13 on Page 143
+    equation 4.32 on Page 169
 
 """
 import sys, os
 import math
 import taichi as ti
 import argparse
+import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 sys.path.append("../")
 
@@ -37,33 +39,77 @@ def main(args):
         'vis': args.vis,
     }
 
-    core_manager = CoreManager(simulation_parameters)
+    demo_path = os.path.abspath(os.curdir)
+    save_path = os.path.join(demo_path, "data", "plot.png")
+    print(save_path)
 
     # BVP problem for Dirichlet Problem
     # Laplacian(u) = 0,
-    # With u(x) = (1 + x1)exp(2π x2)cos(2π x3) as the analytical result.
+    # With u(x) = (a1 + b1x1)(a2 + b2x2)exp(ıκx3) as the analytical result.
     @ti.func
-    def analytical_function_Dirichlet(x):
-        # return ti.Vector([1 + x[1]])
-        return ti.Vector([(1 + x[0]) * ti.math.exp(2.0 * ti.math.pi * x[1]) * ti.math.cos(2.0 * ti.math.pi * x[2])])
+    def analytical_function_Dirichlet(x, sqrt_n: float = 1):
+        a1 = 0.5
+        b1 = 0.5
+        a2 = 0.5
+        b2 = 0.5
+        k = args.k
+        # Compute Inner trace
+        expd_vec = ti.math.cexp(ti.Vector([0.0, x[2] * k * sqrt_n]))
+        vec_result = (a1 + b1 * x[0]) * (a2 + b2 * x[1]) * expd_vec
+
+        return vec_result
     
     @ti.func
-    def analytical_function_Neumann(x, normal_x):
-        grad_u = ti.Vector(
-            [ti.math.exp(2.0 * ti.math.pi * x[1]) * ti.math.cos(2.0 * ti.math.pi * x[2]),
-             2.0 * ti.math.pi * (1 + x[0]) * ti.math.exp(2.0 * ti.math.pi * x[1]) * ti.math.cos(2.0 * ti.math.pi * x[2]),
-             -2.0 * ti.math.pi * (1 + x[0]) * ti.math.exp(2.0 * ti.math.pi * x[1]) * ti.math.sin(2.0 * ti.math.pi * x[2])]
-        )
-        # grad_u = ti.Vector([0.0, 1.0, 0.0])
-        return ti.Vector([grad_u.dot(normal_x)])
+    def analytical_function_Neumann(x, normal_x, sqrt_n: float = 1):
+        a1 = 0.5
+        b1 = 0.5
+        a2 = 0.5
+        b2 = 0.5
+        k = args.k
+
+        expd_vec = ti.math.cexp(ti.Vector([0.0, x[2] * k * sqrt_n]))
+        du_dx1 = b1 * (a2 + b2 * x[1]) * expd_vec
+        du_dx2 = (a1 + b1 * x[0]) * b2 * expd_vec
+        du_dx3 = (a1 + b1 * x[0]) * (a2 + b2 * x[1]) * ti.Vector([-expd_vec.y, expd_vec.x]) * k * sqrt_n
+        vec_result = du_dx1 * normal_x.x + du_dx2 * normal_x.y + du_dx3 * normal_x.z
+        return vec_result
     
+    wave_numbers = [i * 1.0 for i in range(15)]
+    A1_inv_norms = [0.0 for i in range(len(wave_numbers))]
+    A2_inv_norms = [0.0 for i in range(len(wave_numbers))]
+    core_manager = CoreManager(simulation_parameters)
     core_manager.initialization(
         analytical_function_Dirichlet=analytical_function_Dirichlet,
         analytical_function_Neumann=analytical_function_Neumann
     )
-    core_manager.run()
-    core_manager.kill()
+    for epoch in tqdm(range(len(wave_numbers))):
+        core_manager = CoreManager(simulation_parameters)
+        core_manager.initialization(
+            analytical_function_Dirichlet=analytical_function_Dirichlet,
+            analytical_function_Neumann=analytical_function_Neumann
+        )
+        k = wave_numbers[epoch]
+        core_manager._simulation_parameters['k'] = k
+        core_manager._BEM_manager._k = k
 
+        A1_norm = core_manager._BEM_manager.get_mat_A1_norm()
+        A2_norm = core_manager._BEM_manager.get_mat_A2_norm()
+
+        A1_inv_norms[epoch] = 1.0 / A1_norm
+        A2_inv_norms[epoch] = 1.0 / A2_norm
+        print("epoch = {}, A1_norm = {}, A2_norm = {}".format(epoch, A1_norm, A2_norm))  # A1_norm = 0.03073062002658844, A2_norm = 0.34844180941581726
+        
+        core_manager.kill()
+    
+    fig = plt.figure(1)
+    plt.title("unit sphere transmission problem")
+    plt.xlabel("k")
+    plt.ylabel("norm")
+    plt.yscale("log")
+    plt.plot(wave_numbers, A1_inv_norms, 'blue', label="A1_inv_norm")
+    plt.plot(wave_numbers, A2_inv_norms, 'red', label="A2_inv_norm")
+    plt.legend()
+    fig.savefig(save_path)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -95,7 +141,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--n_i",
         type=int,
-        default=1,
+        default=3,
         help="n_i, physical if n_i < n_o",
     )
 
@@ -109,16 +155,8 @@ if __name__ == '__main__':
     parser.add_argument(
         "--k",
         type=float,
-        default=0,
+        default=3,
         help="wavenumber",
-    )
-
-    parser.add_argument(
-        "--kernel",
-        type=str,
-        default="Laplace",
-        choices=["Laplace", "Helmholtz", "Helmholtz_Transmission"],
-        help="Do we need a video for visualization?",
     )
 
     parser.add_argument(
@@ -126,6 +164,14 @@ if __name__ == '__main__':
         type=str,
         default="Dirichlet",
         choices=["Dirichlet", "Neumann", "Mix"],
+        help="Do we need a video for visualization?",
+    )
+
+    parser.add_argument(
+        "--kernel",
+        type=str,
+        default="Helmholtz_Transmission",
+        choices=["Laplace", "Helmholtz", "Helmholtz_Transmission"],
         help="Do we need a video for visualization?",
     )
 
@@ -146,21 +192,21 @@ if __name__ == '__main__':
     parser.add_argument(
         "--show_wireframe",
         type=bool,
-        default=True,
+        default=False,
         help="Do we need a video for visualization?",
     )
 
     parser.add_argument(
         "--use_augment",
         type=bool,
-        default=False,
+        default=True,
         help="To solve linear system equations, an augmented matrix might be used",
     )
 
     parser.add_argument(
         "--vis",
         type=bool,
-        default=True,
+        default=False,
         help="Visualization, use GUI",
     )
 

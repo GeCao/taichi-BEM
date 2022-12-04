@@ -6,7 +6,6 @@ import taichi as ti
 class AbstractHypersingularLayer(ABC):
     def __init__(self, BEM_manager, *args, **kwargs,):
         self._BEM_manager = BEM_manager
-        self._sqrt_n = 1.0
     
     @ti.func
     def G(self, x, y, sqrt_n):
@@ -19,9 +18,6 @@ class AbstractHypersingularLayer(ABC):
     @ti.func
     def grad2_G_xy(self, x, y, curl_phix_dot_curl_phiy, sqrt_n):
         return self._BEM_manager.grad2_G_xy(x, y, curl_phix_dot_curl_phiy, sqrt_n)
-    
-    def set_sqrt_n(self, sqrt_n):
-        self._sqrt_n = sqrt_n
 
     @property
     @abstractmethod

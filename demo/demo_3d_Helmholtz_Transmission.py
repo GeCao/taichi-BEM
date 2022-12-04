@@ -34,6 +34,7 @@ def main(args):
         'make_video': args.make_video,
         'show_wireframe': args.show_wireframe,
         'use_augment': args.use_augment,
+        'vis': args.vis,
     }
 
     core_manager = CoreManager(simulation_parameters)
@@ -43,10 +44,10 @@ def main(args):
     # With u(x) = (a1 + b1x1)(a2 + b2x2)exp(ıκx3) as the analytical result.
     @ti.func
     def analytical_function_Dirichlet(x, sqrt_n: float = 1):
-        a1 = 0.5
-        b1 = 0.5
-        a2 = 0.5
-        b2 = 0.5
+        a1 = 1.0
+        b1 = 0.0
+        a2 = 1.0
+        b2 = 0.0
         k = args.k
         # Compute Inner trace
         expd_vec = ti.math.cexp(ti.Vector([0.0, x[2] * k * sqrt_n]))
@@ -56,10 +57,10 @@ def main(args):
     
     @ti.func
     def analytical_function_Neumann(x, normal_x, sqrt_n: float = 1):
-        a1 = 0.5
-        b1 = 0.5
-        a2 = 0.5
-        b2 = 0.5
+        a1 = 1.0
+        b1 = 0.0
+        a2 = 1.0
+        b2 = 0.0
         k = args.k
 
         expd_vec = ti.math.cexp(ti.Vector([0.0, x[2] * k * sqrt_n]))
@@ -107,7 +108,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--n_i",
         type=int,
-        default=1.5,
+        default=3,
         help="n_i, physical if n_i < n_o",
     )
 
@@ -167,6 +168,13 @@ if __name__ == '__main__':
         type=bool,
         default=True,
         help="To solve linear system equations, an augmented matrix might be used",
+    )
+
+    parser.add_argument(
+        "--vis",
+        type=bool,
+        default=True,
+        help="Visualization, use GUI",
     )
 
     args = parser.parse_args()

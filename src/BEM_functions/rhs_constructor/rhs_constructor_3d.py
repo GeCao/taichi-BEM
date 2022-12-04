@@ -2,7 +2,7 @@ import taichi as ti
 import numpy as np
 
 from src.BEM_functions.rhs_constructor import AbstractRHSConstructor
-from src.BEM_functions.utils import CellFluxType, VertAttachType, KernelType, PanelsRelation
+from src.BEM_functions.utils import CellFluxType, VertAttachType, KernelType, PanelsRelation, AssembleType
 
 
 @ti.data_oriented
@@ -19,22 +19,21 @@ class RHSConstructor3d(AbstractRHSConstructor):
         self._np_dtype = self._BEM_manager._np_dtype
         self._dim = self._BEM_manager._dim
         self._kernel_type = self._BEM_manager._kernel_type
-        self._k = self._BEM_manager._k
         self._n = self._BEM_manager._n
 
         self.num_of_Dirichlets = self._BEM_manager.get_num_of_Dirichlets()
         self.num_of_Neumanns = self._BEM_manager.get_num_of_Neumanns()
         self.num_of_vertices = self._BEM_manager.get_num_of_vertices()
         self.num_of_panels = self._BEM_manager.get_num_of_panels()
-        self._sqrt_ni = self._BEM_manager._sqrt_ni
-        self._sqrt_no = self._BEM_manager._sqrt_no
+
         self.analytical_function_Dirichlet = self._BEM_manager.analytical_function_Dirichlet
         self.analytical_function_Neumann = self._BEM_manager.analytical_function_Neumann
+
         self._vert_g_boundary = ti.Vector.field(self._n, dtype=self._ti_dtype, shape=(self.num_of_vertices,))
         self._panel_f_boundary = ti.Vector.field(self._n, dtype=self._ti_dtype, shape=(self.num_of_panels,))
-        self._panel_f_vert_g_boundary_compact = ti.Vector.field(self._n, dtype=self._ti_dtype, shape=(self.num_of_Neumanns + self.num_of_Dirichlets,))
+
         self._set_boundaries()
-        self._rhs = ti.Vector.field(self._n, dtype=self._ti_dtype, shape=(self.num_of_Dirichlets + self.num_of_Neumanns))
+
         self._gvec = ti.Vector.field(self._n, dtype=self._ti_dtype, shape=())
         if self.num_of_Dirichlets > 0:
             self._gvec = ti.Vector.field(
@@ -52,6 +51,9 @@ class RHSConstructor3d(AbstractRHSConstructor):
 
     @ti.kernel
     def _set_boundaries(self):
+        sqrt_ni = self._BEM_manager._sqrt_ni
+        sqrt_no = self._BEM_manager._sqrt_no
+
         for i in range(self.num_of_panels):
             x1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * i + 0)
             x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * i + 1)
@@ -64,26 +66,36 @@ class RHSConstructor3d(AbstractRHSConstructor):
                 vert_idx3 = self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * i + 2)
 
                 if ti.static(self._kernel_type == int(KernelType.HELMHOLTZ_TRANSMISSION)):
-                    self._vert_g_boundary[vert_idx1] = (
-                        self.analytical_function_Dirichlet(x1, self._sqrt_ni) - self.analytical_function_Dirichlet(x1, self._sqrt_no)
-                    )
-                    self._vert_g_boundary[vert_idx2] = (
-                        self.analytical_function_Dirichlet(x2, self._sqrt_ni) - self.analytical_function_Dirichlet(x2, self._sqrt_no)
-                    )
-                    self._vert_g_boundary[vert_idx3] = (
-                        self.analytical_function_Dirichlet(x3, self._sqrt_ni) - self.analytical_function_Dirichlet(x3, self._sqrt_no)
-                    )
+                    if ti.static(self._BEM_manager._use_augment > 0):
+                        self._vert_g_boundary[vert_idx1] = (
+                            self.analytical_function_Dirichlet(x1, sqrt_ni) - self.analytical_function_Dirichlet(x1, sqrt_no)
+                        )
+                        self._vert_g_boundary[vert_idx2] = (
+                            self.analytical_function_Dirichlet(x2, sqrt_ni) - self.analytical_function_Dirichlet(x2, sqrt_no)
+                        )
+                        self._vert_g_boundary[vert_idx3] = (
+                            self.analytical_function_Dirichlet(x3, sqrt_ni) - self.analytical_function_Dirichlet(x3, sqrt_no)
+                        )
+                    else:
+                        self._vert_g_boundary[vert_idx1] = self.analytical_function_Dirichlet(x1, sqrt_ni)
+                        self._vert_g_boundary[vert_idx2] = self.analytical_function_Dirichlet(x1, sqrt_ni)
+                        self._vert_g_boundary[vert_idx3] = self.analytical_function_Dirichlet(x1, sqrt_ni)
                 else:
-                    self._vert_g_boundary[vert_idx1] = self.analytical_function_Dirichlet(x1)
-                    self._vert_g_boundary[vert_idx2] = self.analytical_function_Dirichlet(x2)
-                    self._vert_g_boundary[vert_idx3] = self.analytical_function_Dirichlet(x3)
+                    if ti.static(self._BEM_manager._use_augment > 0):
+                        self._vert_g_boundary[vert_idx1] = self.analytical_function_Dirichlet(x1) - self.analytical_function_Dirichlet(x1)
+                        self._vert_g_boundary[vert_idx2] = self.analytical_function_Dirichlet(x2) - self.analytical_function_Dirichlet(x2)
+                        self._vert_g_boundary[vert_idx3] = self.analytical_function_Dirichlet(x3) - self.analytical_function_Dirichlet(x3)
+                    else:
+                        self._vert_g_boundary[vert_idx1] = self.analytical_function_Dirichlet(x1)
+                        self._vert_g_boundary[vert_idx2] = self.analytical_function_Dirichlet(x2)
+                        self._vert_g_boundary[vert_idx3] = self.analytical_function_Dirichlet(x3)
             elif self._BEM_manager.get_panel_type(i) == int(CellFluxType.NEUMANN_KNOWN):
                 # Neumann boundary
                 x = (x1 + x2 + x3) / 3.0
                 normal_x = self._BEM_manager.get_panel_normal(i)
                 if ti.static(self._kernel_type == int(KernelType.HELMHOLTZ_TRANSMISSION)):
                     self._panel_f_boundary[i] = (
-                        self.analytical_function_Neumann(x, normal_x, self._sqrt_ni) - self.analytical_function_Neumann(x, normal_x, self._sqrt_no)
+                        self.analytical_function_Neumann(x, normal_x, sqrt_ni) - self.analytical_function_Neumann(x, normal_x, sqrt_no)
                     )
                 else:
                     self._panel_f_boundary[i] = self.analytical_function_Neumann(x, normal_x)
@@ -184,13 +196,13 @@ class RHSConstructor3d(AbstractRHSConstructor):
                 g2 = self._vert_g_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * triangle_x + 1)]
                 g3 = self._vert_g_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * triangle_x + 2)]
                 gx = self.interplate_from_unit_triangle_to_general(r1=r1_x, r2=r2_x, x1=g1, x2=g2, x3=g3)
-                integrand += 0.5 * (
+                integrand += (
                     gx
                 ) * weight * jacobian
             elif vec_type == int(CellFluxType.NEUMANN_KNOWN):
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
                 fx = self._panel_f_boundary[triangle_x]
-                integrand += 0.5 * (
+                integrand += (
                     fx * phix
                 ) * weight * jacobian
             else:
@@ -199,47 +211,15 @@ class RHSConstructor3d(AbstractRHSConstructor):
         return integrand
     
     @ti.kernel
-    def forward(self):
-        Kg_sign = True
-        Vf_sign = False
-        Kf_sign = False
-        Wg_sign = False
-        if ti.static(self._kernel_type == int(KernelType.HELMHOLTZ_TRANSMISSION)):
-            Kg_sign = False
-            Vf_sign = True
-            Kf_sign = True
-            Wg_sign = True
-        
+    def multiply_half_identity_to_vector(self, multiplier: float):
         if ti.static(self.num_of_Dirichlets > 0):
-            self._gvec.fill(0)
-
-            # += K * g
-            self._BEM_manager.double_layer.apply_K_dot_vert_boundary(
-                vert_boundary=self._vert_g_boundary, result_vec=self._gvec, add=Kg_sign
-            )
-            # += -V * f
-            self._BEM_manager.single_layer.apply_V_dot_panel_boundary(
-                panel_boundary=self._panel_f_boundary, result_vec=self._gvec, add=Vf_sign
-            )
-        
-            # += 0.5M * g
+            # += 0.5I * g
             for I in self._gvec:
                 i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(I)
-                self._gvec[I] += self.integrate_on_single_triangle(triangle_x=i, basis_function_index_x=-1)
-
+                self._gvec[I] += multiplier * self.integrate_on_single_triangle(triangle_x=i, basis_function_index_x=-1)
+            
         if ti.static(self.num_of_Neumanns > 0):
-            self._fvec.fill(0)
-
-            # += -K' * f
-            self._BEM_manager.adj_double_layer.apply_K_dot_panel_boundary(
-                panel_boundary=self._panel_f_boundary, result_vec=self._fvec, add=Kf_sign
-            )
-            # += -W * g
-            self._BEM_manager.hypersingular_layer.apply_W_dot_vert_boundary(
-                vert_boundary=self._vert_g_boundary, result_vec=self._fvec, add=Wg_sign
-            )
-
-            # += 0.5M * f
+            # += 0.5I * f
             num_of_Neumann_panels = self.num_of_panels - self.num_of_Dirichlets
             for local_I in range(num_of_Neumann_panels):
                 for ii in range(self._dim):
@@ -247,4 +227,28 @@ class RHSConstructor3d(AbstractRHSConstructor):
                     global_vert_idx = self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_i + ii)
                     local_vert_idx = self._BEM_manager.map_global_vert_index_to_local_Neumann(global_vert_idx)
 
-                    self._fvec[local_vert_idx] += self.integrate_on_single_triangle(triangle_x=global_i, basis_function_index_x=ii)
+                    self._fvec[local_vert_idx] += multiplier * self.integrate_on_single_triangle(triangle_x=global_i, basis_function_index_x=ii)
+    
+    def multiply_M_to_vector(self, sqrt_n: float, multiplier: float):
+        if self.num_of_Dirichlets > 0:
+            # += K * g
+            self._BEM_manager.double_layer.apply_K_dot_vert_boundary(sqrt_n=sqrt_n, multiplier=multiplier)
+            # -= V * f
+            self._BEM_manager.single_layer.apply_V_dot_panel_boundary(sqrt_n=sqrt_n, multiplier=-multiplier)
+
+        if self.num_of_Neumanns > 0:
+            # -= K' * f
+            self._BEM_manager.adj_double_layer.apply_K_dot_panel_boundary(sqrt_n=sqrt_n, multiplier=-multiplier)
+            # -= W * g
+            self._BEM_manager.hypersingular_layer.apply_W_dot_vert_boundary(sqrt_n=sqrt_n, multiplier=-multiplier)
+    
+    def forward(self, assemble_type: int, sqrt_n: float):
+        self._fvec.fill(0)
+        self._gvec.fill(0)
+
+        self.multiply_half_identity_to_vector(multiplier=0.5)
+
+        if assemble_type == int(AssembleType.ADD_P_MINUS):
+            self.multiply_M_to_vector(sqrt_n=sqrt_n, multiplier=-1.0)
+        elif assemble_type == int(AssembleType.ADD_P_PLUS):
+            self.multiply_M_to_vector(sqrt_n=sqrt_n, multiplier=1.0)
