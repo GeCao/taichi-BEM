@@ -534,39 +534,56 @@ class BEMManager:
     def compute_analytical_raw_solved(self):
         self.raw_analytical_solved.fill(0)
 
-        Dirichlet_offset = self._Dirichlet_offset_i
-        Neumann_offset = self._Neumann_offset_i
-        if ti.static(self._use_augment > 0):
-            for I in self.raw_analytical_solved:
-                self.raw_analytical_solved[I].x = self.rhs[I].x
-        else:     
-            if ti.static(self.num_of_Dirichlets > 0):
-                for local_I in range(self.num_of_Dirichlets):
-                    # Dirichlet boundary
-                    global_i = self.map_local_Dirichlet_index_to_panel_index(local_I)
-                    x1 = self.get_vertice_from_flat_panel_index(self._dim * global_i + 0)
-                    x2 = self.get_vertice_from_flat_panel_index(self._dim * global_i + 1)
-                    x3 = self.get_vertice_from_flat_panel_index(self._dim * global_i + 2)
-                    x = (x1 + x2 + x3) / 3.0
+        Dirichlet_offset = self._Dirichlet_offset_j
+        Neumann_offset = self._Neumann_offset_j
+        if ti.static(self.num_of_Dirichlets > 0):
+            for local_I in range(self.num_of_Dirichlets):
+                # Dirichlet boundary
+                global_i = self.map_local_Dirichlet_index_to_panel_index(local_I)
+                x1 = self.get_vertice_from_flat_panel_index(self._dim * global_i + 0)
+                x2 = self.get_vertice_from_flat_panel_index(self._dim * global_i + 1)
+                x3 = self.get_vertice_from_flat_panel_index(self._dim * global_i + 2)
+                x = (x1 + x2 + x3) / 3.0
+                normal_x = self.get_panel_normal(global_i)
+                fx = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+                if ti.static(self._kernel_type == int(KernelType.HELMHOLTZ_TRANSMISSION)):
+                    fx = self.rhs_constructor.analytical_function_Dirichlet(x, self._sqrt_ni) - self.rhs_constructor.analytical_function_Dirichlet(x, self._sqrt_no)
+                else:
+                    fx = self.rhs_constructor.analytical_function_Neumann(x, normal_x)
+                self.raw_analytical_solved[local_I + Dirichlet_offset] = fx
+        
+        if ti.static(self.num_of_Neumanns > 0):
+            for global_i in range(self.num_of_vertices):
+                if self.get_vertice_type(global_i) == int(VertAttachType.TOBESOLVED):
+                    local_I = self.map_global_vert_index_to_local_Neumann(global_i)
+                    x = self.get_vertice(global_i)
                     normal_x = self.get_panel_normal(global_i)
-                    fx = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+                    gx = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
                     if ti.static(self._kernel_type == int(KernelType.HELMHOLTZ_TRANSMISSION)):
-                        fx = self.rhs_constructor.analytical_function_Neumann(x, normal_x, self._sqrt_ni)
+                        gx = self.rhs_constructor.analytical_function_Neumann(x, normal_x, self._sqrt_ni) - self.rhs_constructor.analytical_function_Neumann(x, normal_x, self._sqrt_no)
                     else:
-                        fx = self.rhs_constructor.analytical_function_Neumann(x, normal_x)
-                    self.raw_analytical_solved[local_I + Dirichlet_offset].x = fx.x
+                        gx = self.rhs_constructor.analytical_function_Dirichlet(x)
+                    self.raw_analytical_solved[local_I + Neumann_offset] = gx
+        
+        if ti.static(self._use_augment > 0):
+            offset = self.num_of_Dirichlets + self.num_of_Neumanns
+            for I in self.raw_analytical_solved:
+                for ii in ti.static(range(self._n)):
+                    self.rhs[I + offset][ii] = self.raw_analytical_solved[I][ii]
+                    self.raw_analytical_solved[I][ii] = 0.0
             
-            if ti.static(self.num_of_Neumanns > 0):
-                for global_i in range(self.num_of_vertices):
-                    if self.get_vertice_type(global_i) == int(VertAttachType.TOBESOLVED):
-                        local_I = self.map_global_vert_index_to_local_Neumann(global_i)
-                        x = self.get_vertice(global_i)
-                        gx = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
-                        if ti.static(self._kernel_type == int(KernelType.HELMHOLTZ_TRANSMISSION)):
-                            gx = self.rhs_constructor.analytical_function_Dirichlet(x, self._sqrt_ni)
-                        else:
-                            gx = self.rhs_constructor.analytical_function_Dirichlet(x)
-                        self.raw_analytical_solved[local_I + Neumann_offset].x = gx.x
+            for I, J in self._mat_P:
+                self.raw_analytical_solved[I] += ti.math.cmul(
+                    self._mat_P[I, J], self.rhs[J + offset]
+                )
+            
+            for I in self.raw_analytical_solved:
+                for ii in ti.static(range(self._n)):
+                    self.rhs[I + offset][ii] = 0.0
+        
+        for I in self.raw_analytical_solved:
+            if ti.static(self._n == 2):
+                self.raw_analytical_solved[I].y = 0.0
 
     @ti.kernel
     def Jacobian_solver(self) -> float:
@@ -607,9 +624,9 @@ class BEMManager:
     def get_mat_A1_norm(self):
         self.mat_A.fill(0)
 
-        self.layer_forward(sqrt_n=self._sqrt_ni)
+        self.matrix_layer_forward(sqrt_n=self._sqrt_ni)
         self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=-1.0)  # Reduce P_PLUS_I
-        self.layer_forward(sqrt_n=self._sqrt_no)
+        self.matrix_layer_forward(sqrt_n=self._sqrt_no)
         self.assemble_matA(assemble_type=int(AssembleType.ADD_P_MINUS), multiplier=1.0)  # Add P_MINUS_O
 
         torch_mat_A = self.mat_A.to_torch()
@@ -621,9 +638,9 @@ class BEMManager:
     def get_mat_A2_norm(self):
         self.mat_A.fill(0)
 
-        self.layer_forward(sqrt_n=self._sqrt_ni)
+        self.matrix_layer_forward(sqrt_n=self._sqrt_ni)
         self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=1.0)  # Add P_PLUS_I
-        self.layer_forward(sqrt_n=self._sqrt_no)
+        self.matrix_layer_forward(sqrt_n=self._sqrt_no)
         self.assemble_matA(assemble_type=int(AssembleType.ADD_P_MINUS), multiplier=1.0)  # Add P_MINUS_O
 
         torch_mat_A = self.mat_A.to_torch()
@@ -635,9 +652,9 @@ class BEMManager:
     def get_mat_Sio_norm(self):
         self.mat_A.fill(0)
 
-        self.layer_forward(sqrt_n=self._sqrt_ni)
+        self.matrix_layer_forward(sqrt_n=self._sqrt_ni)
         self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=1.0)  # Add P_PLUS_I
-        self.layer_forward(sqrt_n=self._sqrt_no)
+        self.matrix_layer_forward(sqrt_n=self._sqrt_no)
         self.assemble_matA(assemble_type=int(AssembleType.ADD_P_MINUS), multiplier=1.0)  # Add P_MINUS_O
 
         torch_mat_A = self.mat_A.to_torch()
@@ -693,6 +710,7 @@ class BEMManager:
         torch_solved = torch.linalg.solve(torch_mat, torch_rhs)
         if ti.static(self._use_augment > 0):
             self._mat_P.fill(0)
+            self.matrix_layer_forward(sqrt_n=self._sqrt_no)
             self.assemble_matP(assemble_type=int(AssembleType.ADD_P_MINUS), multiplier=1.0)  # ADD P_MINUS_O
             torch_mat_P = self._mat_P.to_torch().to(device)
             if self._n == 1:

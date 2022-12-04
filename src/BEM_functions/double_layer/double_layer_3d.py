@@ -423,36 +423,32 @@ class DoubleLayer3d(AbstractDoubleLayer):
                     global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
                     global_j = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_J)
 
-                    g1 = self._BEM_manager.rhs_constructor._vert_g_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 0)]
-                    g2 = self._BEM_manager.rhs_constructor._vert_g_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 1)]
-                    g3 = self._BEM_manager.rhs_constructor._vert_g_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 2)]
-                    gy = (g1 + g2 + g3) / 3.0
+                    for jj in range(self._dim):
+                        gy = self._BEM_manager.rhs_constructor._vert_g_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + jj)]
 
-                    panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
-                    self._BEM_manager.rhs_constructor._gvec[local_I] += multiplier * self.integrate_on_two_panels(
-                        sqrt_n=sqrt_n,
-                        triangle_x=global_i, triangle_y=global_j,
-                        basis_function_index_y=-1,
-                        panels_relation=panels_relation
-                    ) * gy
+                        panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
+                        self._BEM_manager.rhs_constructor._gvec[local_I] += multiplier * self.integrate_on_two_panels(
+                            sqrt_n=sqrt_n,
+                            triangle_x=global_i, triangle_y=global_j,
+                            basis_function_index_y=jj,
+                            panels_relation=panels_relation
+                        ) * gy
         elif ti.static(self._n == 2):
             for local_I in range(self.num_of_Dirichlets):
                 for local_J in range(self.num_of_Dirichlets):
                     global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
                     global_j = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_J)
 
-                    g1 = self._BEM_manager.rhs_constructor._vert_g_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 0)]
-                    g2 = self._BEM_manager.rhs_constructor._vert_g_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 1)]
-                    g3 = self._BEM_manager.rhs_constructor._vert_g_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 2)]
-                    gy = (g1 + g2 + g3) / 3.0
+                    for jj in range(self._dim):
+                        gy = self._BEM_manager.rhs_constructor._vert_g_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + jj)]
 
-                    panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
-                    self._BEM_manager.rhs_constructor._gvec[local_I] += ti.math.cmul(
-                        multiplier * self.integrate_on_two_panels(
-                            sqrt_n=sqrt_n,
-                            triangle_x=global_i, triangle_y=global_j,
-                            basis_function_index_y=-1,
-                            panels_relation=panels_relation
-                        ),
-                        gy
-                    )
+                        panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
+                        self._BEM_manager.rhs_constructor._gvec[local_I] += ti.math.cmul(
+                            multiplier * self.integrate_on_two_panels(
+                                sqrt_n=sqrt_n,
+                                triangle_x=global_i, triangle_y=global_j,
+                                basis_function_index_y=jj,
+                                panels_relation=panels_relation
+                            ),
+                            gy
+                        )

@@ -121,7 +121,7 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
         Sampled_point   = (1 - r1) * x1  +  (r1 - r2) * x2  +  r2 * x3
         Corres_weight   = w * 2 * Area
         Jacobian        = r1
-        phase functions = r1, r1 - r2, r2
+        phase functions = 1 - r1, r1 - r2, r2
 
         !!!!!!!!!!!!!!
         However, if these two panels has overlaps, such like common edegs, common vertices, even the same panel.

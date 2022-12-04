@@ -82,9 +82,9 @@ class RHSConstructor3d(AbstractRHSConstructor):
                         self._vert_g_boundary[vert_idx3] = self.analytical_function_Dirichlet(x1, sqrt_ni)
                 else:
                     if ti.static(self._BEM_manager._use_augment > 0):
-                        self._vert_g_boundary[vert_idx1] = self.analytical_function_Dirichlet(x1) - self.analytical_function_Dirichlet(x1)
-                        self._vert_g_boundary[vert_idx2] = self.analytical_function_Dirichlet(x2) - self.analytical_function_Dirichlet(x2)
-                        self._vert_g_boundary[vert_idx3] = self.analytical_function_Dirichlet(x3) - self.analytical_function_Dirichlet(x3)
+                        self._vert_g_boundary[vert_idx1] = self.analytical_function_Dirichlet(x1) - 0
+                        self._vert_g_boundary[vert_idx2] = self.analytical_function_Dirichlet(x2) - 0
+                        self._vert_g_boundary[vert_idx3] = self.analytical_function_Dirichlet(x3) - 0
                     else:
                         self._vert_g_boundary[vert_idx1] = self.analytical_function_Dirichlet(x1)
                         self._vert_g_boundary[vert_idx2] = self.analytical_function_Dirichlet(x2)
@@ -191,16 +191,14 @@ class RHSConstructor3d(AbstractRHSConstructor):
 
             jacobian = r1_x
 
+            phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+
             if vec_type == int(CellFluxType.TOBESOLVED):
-                g1 = self._vert_g_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * triangle_x + 0)]
-                g2 = self._vert_g_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * triangle_x + 1)]
-                g3 = self._vert_g_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * triangle_x + 2)]
-                gx = self.interplate_from_unit_triangle_to_general(r1=r1_x, r2=r2_x, x1=g1, x2=g2, x3=g3)
+                gx = self._vert_g_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * triangle_x + basis_function_index_x)]
                 integrand += (
-                    gx
+                    gx * phix
                 ) * weight * jacobian
             elif vec_type == int(CellFluxType.NEUMANN_KNOWN):
-                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
                 fx = self._panel_f_boundary[triangle_x]
                 integrand += (
                     fx * phix
@@ -211,12 +209,13 @@ class RHSConstructor3d(AbstractRHSConstructor):
         return integrand
     
     @ti.kernel
-    def multiply_half_identity_to_vector(self, multiplier: float):
+    def multiply_identity_to_vector(self, multiplier: float):
         if ti.static(self.num_of_Dirichlets > 0):
             # += 0.5I * g
             for I in self._gvec:
-                i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(I)
-                self._gvec[I] += multiplier * self.integrate_on_single_triangle(triangle_x=i, basis_function_index_x=-1)
+                for ii in range(self._dim):
+                    i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(I)
+                    self._gvec[I] += multiplier * self.integrate_on_single_triangle(triangle_x=i, basis_function_index_x=ii)
             
         if ti.static(self.num_of_Neumanns > 0):
             # += 0.5I * f
@@ -246,7 +245,7 @@ class RHSConstructor3d(AbstractRHSConstructor):
         self._fvec.fill(0)
         self._gvec.fill(0)
 
-        self.multiply_half_identity_to_vector(multiplier=0.5)
+        self.multiply_identity_to_vector(multiplier=0.5)
 
         if assemble_type == int(AssembleType.ADD_P_MINUS):
             self.multiply_M_to_vector(sqrt_n=sqrt_n, multiplier=-1.0)

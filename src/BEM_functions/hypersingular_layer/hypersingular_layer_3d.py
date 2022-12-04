@@ -502,18 +502,17 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
                         local_vert_idx = self._BEM_manager.map_global_vert_index_to_local_Neumann(global_vert_idx)
                         global_j = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_J)
 
-                        g1 = self._BEM_manager.rhs_constructor._vert_g_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 0)]
-                        g2 = self._BEM_manager.rhs_constructor._vert_g_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 1)]
-                        g3 = self._BEM_manager.rhs_constructor._vert_g_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 2)]
-                        gy = (g1 + g2 + g3) / 3.0
-
                         panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
-                        self._BEM_manager.rhs_constructor._fvec[local_vert_idx] += multiplier * self.integrate_on_two_panels(
-                            sqrt_n=sqrt_n,
-                            triangle_x=global_i, triangle_y=global_j,
-                            basis_function_index_x=ii, basis_function_index_y=-1,
-                            panels_relation=panels_relation
-                        ) * gy
+
+                        for jj in range(self._dim):
+                            gy = self._BEM_manager.rhs_constructor._vert_g_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + jj)]
+
+                            self._BEM_manager.rhs_constructor._fvec[local_vert_idx] += multiplier * self.integrate_on_two_panels(
+                                sqrt_n=sqrt_n,
+                                triangle_x=global_i, triangle_y=global_j,
+                                basis_function_index_x=ii, basis_function_index_y=jj,
+                                panels_relation=panels_relation
+                            ) * gy
         elif ti.static(self._n == 2):
             for local_I in range(num_of_Neumann_panels):
                 for local_J in range(self.num_of_Dirichlets):
@@ -523,18 +522,16 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
                         local_vert_idx = self._BEM_manager.map_global_vert_index_to_local_Neumann(global_vert_idx)
                         global_j = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_J)
 
-                        g1 = self._BEM_manager.rhs_constructor._vert_g_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 0)]
-                        g2 = self._BEM_manager.rhs_constructor._vert_g_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 1)]
-                        g3 = self._BEM_manager.rhs_constructor._vert_g_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + 2)]
-                        gy = (g1 + g2 + g3) / 3.0
-
                         panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
-                        self._BEM_manager.rhs_constructor._fvec[local_vert_idx] += ti.math.cmul(
-                            multiplier * self.integrate_on_two_panels(
-                                sqrt_n=sqrt_n,
-                                triangle_x=global_i, triangle_y=global_j,
-                                basis_function_index_x=ii, basis_function_index_y=-1,
-                                panels_relation=panels_relation
-                            ),
-                            gy
-                        )
+
+                        for jj in range(self._dim):
+                            gy = self._BEM_manager.rhs_constructor._vert_g_boundary[self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_j + jj)]
+                            self._BEM_manager.rhs_constructor._fvec[local_vert_idx] += ti.math.cmul(
+                                multiplier * self.integrate_on_two_panels(
+                                    sqrt_n=sqrt_n,
+                                    triangle_x=global_i, triangle_y=global_j,
+                                    basis_function_index_x=ii, basis_function_index_y=jj,
+                                    panels_relation=panels_relation
+                                ),
+                                gy
+                            )
