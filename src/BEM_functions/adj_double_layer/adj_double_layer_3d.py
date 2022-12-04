@@ -73,6 +73,7 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
         triangle_x: int,
         triangle_y: int,
         basis_function_index_x: int,
+        basis_function_index_y: int,
         panels_relation: int
     ):
         """
@@ -190,9 +191,10 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+                phiy = self.shape_function(r1_x, r2_x, i=basis_function_index_y)
 
                 integrand += (
-                    self.grad_G_y(y, x, normal_x, sqrt_n) * phix
+                    self.grad_G_y(y, x, normal_x, sqrt_n) * phix * phiy
                 ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COINCIDE):
                 # Get your jacobian
@@ -214,10 +216,11 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                         r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                     )
                     phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+                    phiy = self.shape_function(r1_x, r2_x, i=basis_function_index_y)
 
                     # D1, D3, D5
                     integrand += (
-                        self.grad_G_y(y, x, normal_x, sqrt_n) * phix
+                        self.grad_G_y(y, x, normal_x, sqrt_n) * phix * phiy
                     ) * weight * jacobian
 
                     r1_y, r2_y = xz[0], xz[1]
@@ -230,10 +233,11 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                         r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                     )
                     phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+                    phiy = self.shape_function(r1_x, r2_x, i=basis_function_index_y)
 
                     # D2, D4, D6
                     integrand += (
-                        self.grad_G_y(y, x, normal_x, sqrt_n) * phix
+                        self.grad_G_y(y, x, normal_x, sqrt_n) * phix * phiy
                     ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COMMON_VERTEX):
                 # This algorithm includes 6 regions D1, D2
@@ -250,10 +254,11 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+                phiy = self.shape_function(r1_x, r2_x, i=basis_function_index_y)
 
                 jacobian = xsi * xsi * xsi * eta2
                 integrand += (
-                    self.grad_G_y(y, x, normal_x, sqrt_n) * phix
+                    self.grad_G_y(y, x, normal_x, sqrt_n) * phix * phiy
                 ) * weight * jacobian
 
                 # D2
@@ -269,10 +274,11 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+                phiy = self.shape_function(r1_x, r2_x, i=basis_function_index_y)
 
                 jacobian = xsi * xsi * xsi * eta2
                 integrand += (
-                    self.grad_G_y(y, x, normal_x, sqrt_n) * phix
+                    self.grad_G_y(y, x, normal_x, sqrt_n) * phix * phiy
                 ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COMMON_EDGE):
                 # This algorithm includes 6 regions D1 ~ D5
@@ -289,10 +295,11 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+                phiy = self.shape_function(r1_x, r2_x, i=basis_function_index_y)
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1
                 integrand += (
-                    self.grad_G_y(y, x, normal_x, sqrt_n) * phix
+                    self.grad_G_y(y, x, normal_x, sqrt_n) * phix * phiy
                 ) * weight * jacobian
 
                 # D2
@@ -308,10 +315,11 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+                phiy = self.shape_function(r1_x, r2_x, i=basis_function_index_y)
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.grad_G_y(y, x, normal_x, sqrt_n) * phix
+                    self.grad_G_y(y, x, normal_x, sqrt_n) * phix * phiy
                 ) * weight * jacobian
 
                 # D3
@@ -327,10 +335,11 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+                phiy = self.shape_function(r1_x, r2_x, i=basis_function_index_y)
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.grad_G_y(y, x, normal_x, sqrt_n) * phix
+                    self.grad_G_y(y, x, normal_x, sqrt_n) * phix * phiy
                 ) * weight * jacobian
 
                 # D4
@@ -347,10 +356,11 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+                phiy = self.shape_function(r1_x, r2_x, i=basis_function_index_y)
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.grad_G_y(y, x, normal_x, sqrt_n) * phix
+                    self.grad_G_y(y, x, normal_x, sqrt_n) * phix * phiy
                 ) * weight * jacobian
 
                 # D5
@@ -367,10 +377,11 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
                 phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+                phiy = self.shape_function(r1_x, r2_x, i=basis_function_index_y)
                 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.grad_G_y(y, x, normal_x, sqrt_n) * phix
+                    self.grad_G_y(y, x, normal_x, sqrt_n) * phix * phiy
                 ) * weight * jacobian
         
         return integrand
@@ -397,7 +408,7 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                         self._Kmat[local_vert_idx, local_J] += self.integrate_on_two_panels(
                             sqrt_n=sqrt_n,
                             triangle_x=global_i, triangle_y=global_j,
-                            basis_function_index_x=ii,
+                            basis_function_index_x=ii, basis_function_index_y=-1,
                             panels_relation=panels_relation
                         )
     
@@ -431,7 +442,7 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                         self._BEM_manager.rhs_constructor._fvec[local_vert_idx] += multiplier * self.integrate_on_two_panels(
                             sqrt_n=sqrt_n,
                             triangle_x=global_i, triangle_y=global_j,
-                            basis_function_index_x=ii,
+                            basis_function_index_x=ii, basis_function_index_y=-1,
                             panels_relation=panels_relation
                         ) * self._BEM_manager.rhs_constructor._panel_f_boundary[global_j]
         elif ti.static(self._n == 2):
@@ -448,7 +459,7 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                             multiplier * self.integrate_on_two_panels(
                                 sqrt_n=sqrt_n,
                                 triangle_x=global_i, triangle_y=global_j,
-                                basis_function_index_x=ii,
+                                basis_function_index_x=ii, basis_function_index_y=-1,
                                 panels_relation=panels_relation
                             ),
                             self._BEM_manager.rhs_constructor._panel_f_boundary[global_j]

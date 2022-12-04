@@ -17,6 +17,7 @@ class MeshManager:
         self._ti_dtype = self._core_manager._ti_dtype
         self._dim = self._core_manager._simulation_parameters['dim']
         self._boundary_type = self._core_manager._simulation_parameters['boundary']
+        self._is_transmission = self._core_manager._is_transmission
 
         self._asset_path = os.path.join(self._core_manager.root_path, "assets")
         self._object_path = os.path.join(

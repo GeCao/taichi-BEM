@@ -23,7 +23,7 @@ class BEMManager:
         self._np_dtype = self._core_manager._np_dtype
         self._ti_dtype = self._core_manager._ti_dtype
         self._kernel_type = int(KernelType.LAPLACE)
-        self._boundary = int(CellFluxType.TOBESOLVED)
+        self._is_transmission = self._core_manager._is_transmission
 
         self._simulation_parameters = self._core_manager._simulation_parameters
         if self._simulation_parameters["kernel"] == "Laplace":
@@ -37,15 +37,6 @@ class BEMManager:
             self._n = 2
         else:
             raise RuntimeError("Kernel Type only support Laplace and Helmholtz for now")
-        
-        if self._simulation_parameters["boundary"] == "Dirichlet":
-            self._boundary = int(CellFluxType.TOBESOLVED)
-        elif self._simulation_parameters["boundary"] == "Neumann":
-            self._boundary = int(CellFluxType.NEUMANN_KNOWN)
-        elif self._simulation_parameters["boundary"] == "Mix":
-            self._boundary = int(CellFluxType.MIX)
-        else:
-            raise RuntimeError("Boundary Type only support DIrichlet/Neumann/Mix for now")
         
         self._k = 0.0
         if self._kernel_type == int(KernelType.HELMHOLTZ) or self._kernel_type == int(KernelType.HELMHOLTZ_TRANSMISSION):
