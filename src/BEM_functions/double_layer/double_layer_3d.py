@@ -141,15 +141,15 @@ class DoubleLayer3d(AbstractDoubleLayer):
         """
         integrand = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
 
-        x1 = self._BEM_manager.get_vertice_from_flat_panel_index(3 * triangle_x + 0)
-        x2 = self._BEM_manager.get_vertice_from_flat_panel_index(3 * triangle_x + 1)
-        x3 = self._BEM_manager.get_vertice_from_flat_panel_index(3 * triangle_x + 2)
+        x1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_x + 0)
+        x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_x + 1)
+        x3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_x + 2)
         area_x = self._BEM_manager.get_panel_area(triangle_x)
         normal_x = self._BEM_manager.get_panel_normal(triangle_x)
 
-        y1 = self._BEM_manager.get_vertice_from_flat_panel_index(3 * triangle_y + 0)
-        y2 = self._BEM_manager.get_vertice_from_flat_panel_index(3 * triangle_y + 1)
-        y3 = self._BEM_manager.get_vertice_from_flat_panel_index(3 * triangle_y + 2)
+        y1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_y + 0)
+        y2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_y + 1)
+        y3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_y + 2)
         area_y = self._BEM_manager.get_panel_area(triangle_y)
         normal_y = self._BEM_manager.get_panel_normal(triangle_y)
 

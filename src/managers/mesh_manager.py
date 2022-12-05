@@ -200,7 +200,7 @@ class MeshManager:
             [-1 for i in range(self.num_of_vertices)], dtype=np.int32
         )
         np_map_global_Neumann_to_local = np.array(
-            [-1 for i in range(self.num_of_vertices)], dtype=self._np_dtype
+            [-1 for i in range(self.num_of_vertices)], dtype=np.int32
         )
         for i in range(self.num_of_panels):
             x = 0.0

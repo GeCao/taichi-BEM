@@ -140,15 +140,15 @@ class SingleLayer3d(AbstractSingleLayer):
         """
         integrand = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
 
-        x1 = self._BEM_manager.get_vertice_from_flat_panel_index(3 * triangle_x + 0)
-        x2 = self._BEM_manager.get_vertice_from_flat_panel_index(3 * triangle_x + 1)
-        x3 = self._BEM_manager.get_vertice_from_flat_panel_index(3 * triangle_x + 2)
+        x1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_x + 0)
+        x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_x + 1)
+        x3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_x + 2)
         area_x = self._BEM_manager.get_panel_area(triangle_x)
         normal_x = self._BEM_manager.get_panel_normal(triangle_x)
 
-        y1 = self._BEM_manager.get_vertice_from_flat_panel_index(3 * triangle_y + 0)
-        y2 = self._BEM_manager.get_vertice_from_flat_panel_index(3 * triangle_y + 1)
-        y3 = self._BEM_manager.get_vertice_from_flat_panel_index(3 * triangle_y + 2)
+        y1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_y + 0)
+        y2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_y + 1)
+        y3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_y + 2)
         area_y = self._BEM_manager.get_panel_area(triangle_y)
         normal_y = self._BEM_manager.get_panel_normal(triangle_y)
 
@@ -188,7 +188,7 @@ class SingleLayer3d(AbstractSingleLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                phix = self.shape_function(r1_y, r2_y, i=basis_function_index_x)
+                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
                 phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
 
                 integrand += (
@@ -211,7 +211,7 @@ class SingleLayer3d(AbstractSingleLayer):
                     y = self.interplate_from_unit_triangle_to_general(
                         r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                     )
-                    phix = self.shape_function(r1_y, r2_y, i=basis_function_index_x)
+                    phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
                     phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
 
                     # D1, D3, D5
@@ -228,7 +228,7 @@ class SingleLayer3d(AbstractSingleLayer):
                     y = self.interplate_from_unit_triangle_to_general(
                         r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                     )
-                    phix = self.shape_function(r1_y, r2_y, i=basis_function_index_x)
+                    phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
                     phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
 
                     # D2, D4, D6
@@ -249,7 +249,7 @@ class SingleLayer3d(AbstractSingleLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                phix = self.shape_function(r1_y, r2_y, i=basis_function_index_x)
+                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
                 phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
                 
                 jacobian = xsi * xsi * xsi * eta2
@@ -269,7 +269,7 @@ class SingleLayer3d(AbstractSingleLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                phix = self.shape_function(r1_y, r2_y, i=basis_function_index_x)
+                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
                 phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
                 
                 jacobian = xsi * xsi * xsi * eta2
@@ -290,7 +290,7 @@ class SingleLayer3d(AbstractSingleLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                phix = self.shape_function(r1_y, r2_y, i=basis_function_index_x)
+                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
                 phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
                 
                 jacobian = xsi * xsi * xsi * eta1 * eta1
@@ -310,7 +310,7 @@ class SingleLayer3d(AbstractSingleLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                phix = self.shape_function(r1_y, r2_y, i=basis_function_index_x)
+                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
                 phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
                 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
@@ -330,7 +330,7 @@ class SingleLayer3d(AbstractSingleLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                phix = self.shape_function(r1_y, r2_y, i=basis_function_index_x)
+                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
                 phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
                 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
@@ -351,7 +351,7 @@ class SingleLayer3d(AbstractSingleLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                phix = self.shape_function(r1_y, r2_y, i=basis_function_index_x)
+                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
                 phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
@@ -372,7 +372,7 @@ class SingleLayer3d(AbstractSingleLayer):
                 y = self.interplate_from_unit_triangle_to_general(
                     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
                 )
-                phix = self.shape_function(r1_y, r2_y, i=basis_function_index_x)
+                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
                 phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
