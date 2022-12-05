@@ -21,7 +21,7 @@ class CoreManager:
         self._simulation_parameters = simulation_parameters
         if self._simulation_parameters['kernel'] != "Helmholtz":
             self._simulation_parameters['k'] = 0
-        self._is_transmission = 1 if "Transmission" in self._simulation_parameters['kernel'] or "transmission" in self._simulation_parameters['kernel'] else 0
+        self._is_transmission = 1 if "Full" in self._simulation_parameters['boundary'] or "transmission" in self._simulation_parameters['kernel'] else 0
         self._np_dtype = np.float32
         self._ti_dtype = ti.f32
         self.log_to_disk = self._simulation_parameters["log_to_disk"]

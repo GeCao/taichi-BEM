@@ -26,20 +26,17 @@ class MeshManager:
         )
         self.vertices = None
         self.panels = None
+
         self.panel_areas = None
-        self.panel_areas_initialized = False
         self.vert_areas = None
-        self.vert_areas_initialized = False
         self.panel_normals = None
-        self.panel_normals_initialized = False
         self.vert_normals = None
-        self.vert_normals_initialized = False
+
         self.panel_types = None
         self.vertice_types = None
+
         self.Dirichlet_index = None
         self.Neumann_index = None
-        self.panel_types_initialized = False
-        self.vertice_types_initialized = False
 
         self.num_of_vertices = 0
         self.num_of_panels = 0
@@ -76,12 +73,8 @@ class MeshManager:
             n=self._dim, dtype=self._ti_dtype, shape=(self.num_of_vertices,)
         )  # [NumOfVertices, dim]
         if self._dim == 3:
-            self.panel_areas = ti.field(
-                dtype=self._ti_dtype, shape=(self.num_of_panels,)
-            )  # [NumOfFaces]
-            self.vert_areas = ti.field(
-                dtype=self._ti_dtype, shape=(self.num_of_vertices,)
-            )  # [NumOfVertices]
+            self.panel_areas = ti.field(dtype=self._ti_dtype, shape=(self.num_of_panels,))  # [NumOfFaces]
+            self.vert_areas = ti.field(dtype=self._ti_dtype, shape=(self.num_of_vertices,))  # [NumOfVertices]
             np_panel_areas = np.zeros(self.panel_areas.shape, dtype=self._np_dtype)
             np_vert_areas = np.zeros(self.vert_areas.shape, dtype=self._np_dtype)
             np_panel_normals = np.zeros((self.num_of_panels, self._dim), dtype=self._np_dtype)
@@ -109,18 +102,9 @@ class MeshManager:
             self.vert_areas.from_numpy(np_vert_areas)
             self.panel_normals.from_numpy(np_panel_normals)
             self.vert_normals.from_numpy(np_vert_normals)
-            
-            self.panel_areas_initialized = True
-            self.vert_areas_initialized = True
-            self.panel_normals_initialized = True
-            self.vert_normals_initialized = True
 
-        self.panel_types = ti.field(
-            dtype=ti.i32, shape=(self.num_of_panels,)
-        )
-        self.vertice_types = ti.field(
-            dtype=ti.i32, shape=(self.num_of_vertices,)
-        )
+        self.panel_types = ti.field(dtype=ti.i32, shape=(self.num_of_panels,))
+        self.vertice_types = ti.field(dtype=ti.i32, shape=(self.num_of_vertices,))
 
         self._log_manager.InfoLog("Loading object from path {} finished, "
                                   "with vertices shape = {}, faces shape = {}".format(
@@ -128,7 +112,9 @@ class MeshManager:
         )
         self._log_manager.InfoLog("====================================================================")
 
-        if self._boundary_type == 'Dirichlet':
+        if self._boundary_type == "Full" or self._is_transmission > 0:
+            self.set_full_bvp()
+        elif self._boundary_type == 'Dirichlet':
             self.set_Dirichlet_bvp()
         elif self._boundary_type == 'Neumann':
             self.set_Neumann_bvp()
@@ -138,6 +124,27 @@ class MeshManager:
             raise RuntimeError("The Boundary Type can only be Dirichlet/Neumann/Mix")
 
         self.initialized = True
+
+    def set_full_bvp(self):
+        assert(self.num_of_panels == self.panel_types.shape[0])
+        assert(self.num_of_vertices == self.vertice_types.shape[0])
+        self.num_of_Dirichlets = self.num_of_panels
+        self.num_of_Neumanns = self.num_of_vertices
+
+        self.panel_types.fill(int(CellFluxType.TOBESOLVED))
+        self.vertice_types.fill(int(VertAttachType.TOBESOLVED))
+
+        np_Dirichlet_index = np.array([i for i in range(self.num_of_panels)], dtype=np.int32)
+        self.Dirichlet_index = ti.field(dtype=ti.i32, shape=(self.num_of_Dirichlets,))
+        self.Dirichlet_index.from_numpy(np_Dirichlet_index)
+
+        np_Neumann_index = np.array([i for i in range(self.num_of_panels)], dtype=np.int32)
+        self.Neumann_index = ti.field(dtype=ti.i32, shape=(self.num_of_panels,))
+        self.Neumann_index.from_numpy(np_Neumann_index)
+
+        np_map_global_Neumann_to_local = np.array([i for i in range(self.num_of_vertices)], dtype=np.int32)
+        self.map_global_Neumann_to_local = ti.field(dtype=ti.i32, shape=(self.num_of_vertices,))
+        self.map_global_Neumann_to_local.from_numpy(np_map_global_Neumann_to_local)
     
     def set_Dirichlet_bvp(self):
         assert(self.num_of_panels == self.panel_types.shape[0])
@@ -146,15 +153,14 @@ class MeshManager:
         self.num_of_Neumanns = 0
 
         self.panel_types.fill(int(CellFluxType.TOBESOLVED))
-        self.panel_types_initialized = True
         self.vertice_types.fill(int(VertAttachType.DIRICHLET_KNOWN))
-        self.vertice_types_initialized = True
 
         np_Dirichlet_index = np.array([i for i in range(self.num_of_panels)], dtype=np.int32)
         self.Dirichlet_index = ti.field(dtype=ti.i32, shape=(self.num_of_Dirichlets,))
         self.Dirichlet_index.from_numpy(np_Dirichlet_index)
 
         self.Neumann_index = ti.field(dtype=ti.i32, shape=())
+
         self.map_global_Neumann_to_local = ti.field(dtype=ti.i32, shape=())
     
     def set_Neumann_bvp(self):
@@ -164,9 +170,7 @@ class MeshManager:
         self.num_of_Neumanns = self.num_of_vertices
 
         self.panel_types.fill(int(CellFluxType.NEUMANN_KNOWN))
-        self.panel_types_initialized = True
         self.vertice_types.fill(int(VertAttachType.TOBESOLVED))
-        self.vertice_types_initialized = True
 
         np_Neumann_index = np.array([i for i in range(self.num_of_panels)], dtype=np.int32)
         self.Neumann_index = ti.field(dtype=ti.i32, shape=(self.num_of_panels,))
@@ -193,7 +197,7 @@ class MeshManager:
             [0 for i in range(self.num_of_panels)], dtype=np.int32
         )
         np_vertice_types = np.array(
-            [int(VertAttachType.DIRICHLET_KNOWN) for i in range(self.num_of_vertices)], dtype=np.int32
+            [-1 for i in range(self.num_of_vertices)], dtype=np.int32
         )
         np_map_global_Neumann_to_local = np.array(
             [-1 for i in range(self.num_of_vertices)], dtype=self._np_dtype
@@ -211,17 +215,24 @@ class MeshManager:
                 np_panel_types[i] = int(CellFluxType.TOBESOLVED)
             else:
                 np_panel_types[i] = int(CellFluxType.NEUMANN_KNOWN)
+        
+        for i in range(self.num_of_panels):
+            if np_panel_types[i] == int(CellFluxType.TOBESOLVED):
                 for j in range(self._dim):
                     vert_idx = self.panels[self._dim * i + j]
-                    if np_vertice_types[vert_idx] != int(VertAttachType.TOBESOLVED):
+                    np_vertice_types[vert_idx] = int(VertAttachType.DIRICHLET_KNOWN)
+    
+        for i in range(self.num_of_panels):
+            if np_panel_types[i] == int(CellFluxType.NEUMANN_KNOWN):
+                for j in range(self._dim):
+                    vert_idx = self.panels[self._dim * i + j]
+                    if np_vertice_types[vert_idx] == -1:
                         np_vertice_types[vert_idx] = int(VertAttachType.TOBESOLVED)
                         np_map_global_Neumann_to_local[vert_idx] = self.num_of_Neumanns
                         self.num_of_Neumanns += 1
         
         self.panel_types.from_numpy(np_panel_types)
-        self.panel_types_initialized = True
         self.vertice_types.from_numpy(np_vertice_types)
-        self.vertice_types_initialized = True
 
         np_hlp_indices = np.array([i for i in range(self.num_of_panels)], dtype=np.int32)
         np_Dirichlet_index = np_hlp_indices[np_panel_types == int(CellFluxType.TOBESOLVED)]
@@ -264,7 +275,8 @@ class MeshManager:
     def map_global_vert_index_to_local_Neumann(self, i):
         result = -1
         if ti.static(self.num_of_Neumanns > 0):
-            result = self.map_global_Neumann_to_local[i]
+            if self.vertice_types[i] == int(VertAttachType.TOBESOLVED):
+                result = self.map_global_Neumann_to_local[i]
         return result
     
     @ti.func
@@ -392,19 +404,13 @@ class MeshManager:
         self.vertices = None
         self.panels = None
         self.panel_areas = None
-        self.panel_areas_initialized = False
         self.vert_areas = None
-        self.vert_areas_initialized = False
         self.panel_normals = None
-        self.panel_normals_initialized = False
         self.vert_normals = None
-        self.vert_normals_initialized = False
         self.panel_types = None
         self.vertice_types = None
         self.Dirichlet_index = None
         self.Neumann_index = None
-        self.panel_types_initialized = False
-        self.vertice_types_initialized = False
         self.map_global_Neumann_to_local = None
 
         self._log_manager.ErrorLog("Kill the Mesh Manager")

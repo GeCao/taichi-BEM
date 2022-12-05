@@ -35,7 +35,6 @@ def main(args):
         'log_to_disk': args.log_to_disk,
         'make_video': args.make_video,
         'show_wireframe': args.show_wireframe,
-        'use_augment': args.use_augment,
         'vis': args.vis,
     }
 
@@ -74,7 +73,8 @@ def main(args):
         vec_result = du_dx1 * normal_x.x + du_dx2 * normal_x.y + du_dx3 * normal_x.z
         return vec_result
     
-    wave_numbers = [i * 1.0 for i in range(15)]
+    N = 10
+    wave_numbers = [i * 1.0 / N for i in range(15 * N)]
     A1_inv_norms = [0.0 for i in range(len(wave_numbers))]
     A2_inv_norms = [0.0 for i in range(len(wave_numbers))]
     core_manager = CoreManager(simulation_parameters)
@@ -83,23 +83,15 @@ def main(args):
         analytical_function_Neumann=analytical_function_Neumann
     )
     for epoch in tqdm(range(len(wave_numbers))):
-        core_manager = CoreManager(simulation_parameters)
-        core_manager.initialization(
-            analytical_function_Dirichlet=analytical_function_Dirichlet,
-            analytical_function_Neumann=analytical_function_Neumann
-        )
         k = wave_numbers[epoch]
-        core_manager._simulation_parameters['k'] = k
-        core_manager._BEM_manager._k = k
 
-        A1_norm = core_manager._BEM_manager.get_mat_A1_norm()
-        A2_norm = core_manager._BEM_manager.get_mat_A2_norm()
+        core_manager._BEM_manager.matrix_layer_init()
+        A1_norm = core_manager._BEM_manager.get_mat_A1_norm(k)
+        A2_norm = core_manager._BEM_manager.get_mat_A2_norm(k)
 
-        A1_inv_norms[epoch] = 1.0 / A1_norm
-        A2_inv_norms[epoch] = 1.0 / A2_norm
-        print("epoch = {}, A1_norm = {}, A2_norm = {}".format(epoch, A1_norm, A2_norm))  # A1_norm = 0.03073062002658844, A2_norm = 0.34844180941581726
-        
-        core_manager.kill()
+        A1_inv_norms[epoch] = 1.0 * A1_norm
+        A2_inv_norms[epoch] = 1.0 * A2_norm
+        print("epoch = {}, A1_norm = {}, A2_norm = {}".format(epoch, A1_norm, A2_norm))
     
     fig = plt.figure(1)
     plt.title("unit sphere transmission problem")
@@ -162,8 +154,8 @@ if __name__ == '__main__':
     parser.add_argument(
         "--boundary",
         type=str,
-        default="Dirichlet",
-        choices=["Dirichlet", "Neumann", "Mix"],
+        default="Full",
+        choices=["Dirichlet", "Neumann", "Mix", "Full"],
         help="Do we need a video for visualization?",
     )
 
@@ -194,13 +186,6 @@ if __name__ == '__main__':
         type=bool,
         default=False,
         help="Do we need a video for visualization?",
-    )
-
-    parser.add_argument(
-        "--use_augment",
-        type=bool,
-        default=True,
-        help="To solve linear system equations, an augmented matrix might be used",
     )
 
     parser.add_argument(

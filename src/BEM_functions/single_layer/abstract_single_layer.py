@@ -8,8 +8,8 @@ class AbstractSingleLayer(object):
         self._BEM_manager = BEM_manager
     
     @ti.func
-    def G(self, x, y, sqrt_n):
-        return self._BEM_manager.G(x, y, sqrt_n)
+    def G(self, x, y, k, sqrt_n):
+        return self._BEM_manager.G(x, y, k, sqrt_n)
     
     @ti.func
     def grad_G_y(self, x, y, normal_y, sqrt_n):

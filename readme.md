@@ -9,7 +9,7 @@
 <img src="demo/Helmholtz_solved_Dirichlet.png" height="270">
 
 ### Helmholtz Transmission Equation (Still Working on! 👨‍💻)
-<img src="demo/HelmholtzTransmission_solved_Dirichlet.png" height="270">
+<img src="demo/HelmholtzTransmission_solved_Full.png" height="270">
 
 
 ### How to run the code

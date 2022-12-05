@@ -11,13 +11,11 @@ class SingleLayer3d(AbstractSingleLayer):
     def __init__(self, BEM_manager, *args, **kwargs,):
         super(SingleLayer3d, self).__init__(BEM_manager, *args, **kwargs)
 
-        self._GaussQR = self._BEM_manager._GaussQR
-        self._Q = self._BEM_manager._Q  # Number of local shape functions
+        self._GaussQR = self._BEM_manager.get_GaussQR()
         self._dim = self._BEM_manager._dim
 
         self._ti_dtype = self._BEM_manager._ti_dtype
         self._np_dtype = self._BEM_manager._np_dtype
-        self._kernel_type = self._BEM_manager._kernel_type
         self._n = self._BEM_manager._n
 
         self.num_of_Dirichlets = self._BEM_manager.get_num_of_Dirichlets()
@@ -68,6 +66,7 @@ class SingleLayer3d(AbstractSingleLayer):
     @ti.func
     def integrate_on_two_panels(
         self,
+        k: float,
         sqrt_n: float,
         triangle_x: int,
         triangle_y: int,
@@ -193,7 +192,7 @@ class SingleLayer3d(AbstractSingleLayer):
                 phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
 
                 integrand += (
-                    self.G(x, y, sqrt_n) * phix * phiy
+                    self.G(x, y, k, sqrt_n) * phix * phiy
                 ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COINCIDE):
                 # Get your jacobian
@@ -217,7 +216,7 @@ class SingleLayer3d(AbstractSingleLayer):
 
                     # D1, D3, D5
                     integrand += (
-                        self.G(x, y, sqrt_n) * phix * phiy
+                        self.G(x, y, k, sqrt_n) * phix * phiy
                     ) * weight * jacobian
 
                     r1_y, r2_y = xz[0], xz[1]
@@ -234,7 +233,7 @@ class SingleLayer3d(AbstractSingleLayer):
 
                     # D2, D4, D6
                     integrand += (
-                        self.G(x, y, sqrt_n) * phix * phiy
+                        self.G(x, y, k, sqrt_n) * phix * phiy
                     ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COMMON_VERTEX):
                 # This algorithm includes 6 regions D1, D2
@@ -255,7 +254,7 @@ class SingleLayer3d(AbstractSingleLayer):
                 
                 jacobian = xsi * xsi * xsi * eta2
                 integrand += (
-                    self.G(x, y, sqrt_n) * phix * phiy
+                    self.G(x, y, k, sqrt_n) * phix * phiy
                 ) * weight * jacobian
 
                 # D2
@@ -275,7 +274,7 @@ class SingleLayer3d(AbstractSingleLayer):
                 
                 jacobian = xsi * xsi * xsi * eta2
                 integrand += (
-                    self.G(x, y, sqrt_n) * phix * phiy
+                    self.G(x, y, k, sqrt_n) * phix * phiy
                 ) * weight * jacobian
             elif panels_relation == int(PanelsRelation.COMMON_EDGE):
                 # This algorithm includes 6 regions D1 ~ D5
@@ -296,7 +295,7 @@ class SingleLayer3d(AbstractSingleLayer):
                 
                 jacobian = xsi * xsi * xsi * eta1 * eta1
                 integrand += (
-                    self.G(x, y, sqrt_n) * phix * phiy
+                    self.G(x, y, k, sqrt_n) * phix * phiy
                 ) * weight * jacobian
 
                 # D2
@@ -316,7 +315,7 @@ class SingleLayer3d(AbstractSingleLayer):
                 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.G(x, y, sqrt_n) * phix * phiy
+                    self.G(x, y, k, sqrt_n) * phix * phiy
                 ) * weight * jacobian
 
                 # D3
@@ -336,7 +335,7 @@ class SingleLayer3d(AbstractSingleLayer):
                 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.G(x, y, sqrt_n) * phix * phiy
+                    self.G(x, y, k, sqrt_n) * phix * phiy
                 ) * weight * jacobian
 
                 # D4
@@ -357,7 +356,7 @@ class SingleLayer3d(AbstractSingleLayer):
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.G(x, y, sqrt_n) * phix * phiy
+                    self.G(x, y, k, sqrt_n) * phix * phiy
                 ) * weight * jacobian
 
                 # D5
@@ -378,13 +377,13 @@ class SingleLayer3d(AbstractSingleLayer):
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.G(x, y, sqrt_n) * phix * phiy
+                    self.G(x, y, k, sqrt_n) * phix * phiy
                 ) * weight * jacobian
         
         return integrand
     
     @ti.kernel
-    def forward(self, sqrt_n: float):
+    def forward(self, k: float, sqrt_n: float):
         """
         Compute BIO matix V_mat
         """
@@ -398,14 +397,14 @@ class SingleLayer3d(AbstractSingleLayer):
                 # Construct a local matrix
                 panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
                 self._Vmat[local_I, local_J] += self.integrate_on_two_panels(
-                    sqrt_n=sqrt_n,
+                    k=k, sqrt_n=sqrt_n,
                     triangle_x=global_i, triangle_y=global_j,
                     basis_function_index_x=-1, basis_function_index_y=-1,
                     panels_relation=panels_relation
                 )
     
     @ti.kernel
-    def apply_V_dot_panel_boundary(self, sqrt_n: float, multiplier: float):
+    def apply_V_dot_panel_boundary(self, k: float, sqrt_n: float, multiplier: float):
         """
         If you are applying Dirichlet boundary on vertices,
         You need to solve a linear system equations to get Neumann panels,
@@ -417,34 +416,26 @@ class SingleLayer3d(AbstractSingleLayer):
         where [f] is the input argument [panel_boundary] where an extended Neumann bounary is applied on panels
         and [V] is our own BIO matrix [self._Vmat]
         """
-        assert(self._BEM_manager.rhs_constructor._panel_f_boundary.shape[0] == self.num_of_panels)
-        assert(self._BEM_manager.rhs_constructor._gvec.shape[0] == self.num_of_Dirichlets)
-
         num_of_Neumann_panels = self.num_of_panels - self.num_of_Dirichlets
-        if ti.static(self._n == 1):
-            for local_I in range(self.num_of_Dirichlets):
-                for local_J in range(num_of_Neumann_panels):
-                    global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
-                    global_j = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_J)
-                    panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
-                    self._BEM_manager.rhs_constructor._gvec[local_I] += multiplier * self.integrate_on_two_panels(
-                        sqrt_n=sqrt_n,
-                        triangle_x=global_i, triangle_y=global_j,
-                        basis_function_index_x=-1, basis_function_index_y=-1,
-                        panels_relation=panels_relation
-                    ) * self._BEM_manager.rhs_constructor._panel_f_boundary[global_j]
-        elif ti.static(self._n == 2):
-            for local_I in range(self.num_of_Dirichlets):
-                for local_J in range(num_of_Neumann_panels):
-                    global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
-                    global_j = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_J)
-                    panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
-                    self._BEM_manager.rhs_constructor._gvec[local_I] += ti.math.cmul(
-                        multiplier * self.integrate_on_two_panels(
-                            sqrt_n=sqrt_n,
-                            triangle_x=global_i, triangle_y=global_j,
-                            basis_function_index_x=-1, basis_function_index_y=-1,
-                            panels_relation=panels_relation
-                        ),
-                        self._BEM_manager.rhs_constructor._panel_f_boundary[global_j]
-                    )
+        if self.num_of_Neumanns == self.num_of_vertices:
+            num_of_Neumann_panels = self.num_of_panels
+        for local_I in range(self.num_of_Dirichlets):
+            for local_J in range(num_of_Neumann_panels):
+                global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
+                global_j = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_J)
+
+                panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
+
+                integrand = self.integrate_on_two_panels(
+                    k=k, sqrt_n=sqrt_n,
+                    triangle_x=global_i, triangle_y=global_j,
+                    basis_function_index_x=-1, basis_function_index_y=-1,
+                    panels_relation=panels_relation
+                )
+                fy = self._BEM_manager.rhs_constructor.get_panel_Neumann_boundary(global_j)
+
+                Dirichlet_offset_i = self._BEM_manager.get_Dirichlet_offset_i()
+                if ti.static(self._n == 1):
+                    self._BEM_manager.rhs_constructor.get_rhs_vec()[local_I + Dirichlet_offset_i] += multiplier * integrand * fy
+                elif ti.static(self._n == 2):
+                    self._BEM_manager.rhs_constructor.get_rhs_vec()[local_I + Dirichlet_offset_i] += multiplier * ti.math.cmul(integrand, fy)

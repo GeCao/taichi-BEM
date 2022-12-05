@@ -33,7 +33,6 @@ def main(args):
         'log_to_disk': args.log_to_disk,
         'make_video': args.make_video,
         'show_wireframe': args.show_wireframe,
-        'use_augment': args.use_augment,
         'vis': args.vis,
     }
 
@@ -122,15 +121,15 @@ if __name__ == '__main__':
     parser.add_argument(
         "--k",
         type=float,
-        default=3,
+        default=1,
         help="wavenumber",
     )
 
     parser.add_argument(
         "--boundary",
         type=str,
-        default="Dirichlet",
-        choices=["Dirichlet", "Neumann", "Mix"],
+        default="Full",
+        choices=["Dirichlet", "Neumann", "Mix", "Full"],
         help="Do we need a video for visualization?",
     )
 
@@ -161,13 +160,6 @@ if __name__ == '__main__':
         type=bool,
         default=False,
         help="Do we need a video for visualization?",
-    )
-
-    parser.add_argument(
-        "--use_augment",
-        type=bool,
-        default=True,
-        help="To solve linear system equations, an augmented matrix might be used",
     )
 
     parser.add_argument(

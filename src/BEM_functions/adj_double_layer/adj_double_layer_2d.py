@@ -10,12 +10,10 @@ class AdjDoubleLayer2d(AbstractAdjDoubleLayer):
     def __init__(self, BEM_manager, *args, **kwargs,):
         super(AdjDoubleLayer2d, self).__init__(BEM_manager, *args, **kwargs)
         
-        self._GaussQR = self._BEM_manager._GaussQR
-        self._Q = self._BEM_manager._Q  # Number of local shape functions
+        self._GaussQR = self._BEM_manager.get_GaussQR()
 
         self._ti_dtype = self._BEM_manager._ti_dtype
         self._np_dtype = self._BEM_manager._np_dtype
-        self._kernel_type = self._BEM_manager._kernel_type
         self._n = self._BEM_manager._n
 
         self.num_of_Dirichlets = self._BEM_manager.get_num_of_Dirichlets()

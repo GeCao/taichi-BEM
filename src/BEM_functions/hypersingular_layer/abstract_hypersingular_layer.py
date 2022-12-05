@@ -8,16 +8,16 @@ class AbstractHypersingularLayer(ABC):
         self._BEM_manager = BEM_manager
     
     @ti.func
-    def G(self, x, y, sqrt_n):
-        return self._BEM_manager.G(x, y, sqrt_n)
+    def G(self, x, y, k, sqrt_n):
+        return self._BEM_manager.G(x, y, k, sqrt_n)
     
     @ti.func
-    def grad_G_y(self, x, y, normal_y, sqrt_n):
-        return self._BEM_manager.grad_G_y(x, y, normal_y, sqrt_n)
+    def grad_G_y(self, x, y, normal_y, k, sqrt_n):
+        return self._BEM_manager.grad_G_y(x, y, normal_y, k, sqrt_n)
     
     @ti.func
-    def grad2_G_xy(self, x, y, curl_phix_dot_curl_phiy, sqrt_n):
-        return self._BEM_manager.grad2_G_xy(x, y, curl_phix_dot_curl_phiy, sqrt_n)
+    def grad2_G_xy(self, x, y, curl_phix_dot_curl_phiy, k, sqrt_n):
+        return self._BEM_manager.grad2_G_xy(x, y, curl_phix_dot_curl_phiy, k, sqrt_n)
 
     @property
     @abstractmethod
