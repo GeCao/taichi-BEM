@@ -11,6 +11,10 @@
 ### Helmholtz Transmission Equation
 <img src="demo/HelmholtzTransmission_solved_Full.png" height="270">
 
+### Norm analysis (Still Working on! 👨‍💻)
+### left: Augmented A=[A; Pi+]---------right: Non-augmented A = A
+<img src="demo/augmented_plot.png" height="192">
+<img src="demo/non_augmented_plot.png" height="192">
 
 ### How to run the code
 
@@ -19,7 +23,7 @@ cd taichi-BEM
 pip install -r requirements.txt
 cd demo
 python demo_3d_Laplace.py --boundary Dirichlet
-python demo_3d_Helmholtz.py --boundary Neumann -k 5
+python demo_3d_Helmholtz.py --boundary Neumann --k 3
 python demo_3d_Helmholtz_Transmission.py --boundary Full --k 5
 ```
 

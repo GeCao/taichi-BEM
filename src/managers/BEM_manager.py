@@ -591,12 +591,13 @@ class BEMManager:
     
     def compute_norm(self, A: torch.Tensor):
         # Do your svd firstly
-        S = torch.linalg.svdvals(A)
-        A_norm = 1.0 / S.abs().min()
+        ATA = A.transpose(0, 1).matmul(A)
+        S = torch.linalg.svdvals(ATA)
+        A_norm = torch.sqrt(S.max())
 
-        return A_norm
+        return A_norm.item()
     
-    def get_mat_A1_norm(self, k: float):
+    def get_mat_A1_inv_norm(self, k: float):
         self._mat_A.fill(0)
 
         self.matrix_layer_forward(k=k, sqrt_n=self._sqrt_ni)
@@ -607,12 +608,12 @@ class BEMManager:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         torch_mat_A = self._mat_A.to_torch().to(device)
         torch_mat_A = warp_tensor(torch_mat_A)
-        # torch_mat_A = torch.linalg.inv(torch_mat_A)
+        torch_mat_A = torch.linalg.inv(torch_mat_A)
         mat_A_norm = self.compute_norm(torch_mat_A)
 
-        return mat_A_norm.item()
+        return mat_A_norm
     
-    def get_mat_A2_norm(self, k: float):
+    def get_mat_A2_inv_norm(self, k: float):
         self._mat_A.fill(0)
 
         self.matrix_layer_forward(k=k, sqrt_n=self._sqrt_ni)
@@ -623,10 +624,52 @@ class BEMManager:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         torch_mat_A = self._mat_A.to_torch().to(device)
         torch_mat_A = warp_tensor(torch_mat_A)
-        # torch_mat_A = torch.linalg.inv(torch_mat_A)
+        torch_mat_A = torch.linalg.inv(torch_mat_A)
         mat_A_norm = self.compute_norm(torch_mat_A)
 
-        return mat_A_norm.item()
+        return mat_A_norm
+    
+    def get_augment_mat_A1_inv_norm(self, k: float):
+        self._mat_A.fill(0)
+        self._mat_P.fill(0)
+
+        self.matrix_layer_forward(k=k, sqrt_n=self._sqrt_ni)
+        self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=-1.0)  # Reduce P_PLUS_I
+        self.assemble_matP(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=1.0)  # ADD P_PLUS_I
+        self.matrix_layer_forward(k=k, sqrt_n=self._sqrt_no)
+        self.assemble_matA(assemble_type=int(AssembleType.ADD_P_MINUS), multiplier=1.0)  # Add P_MINUS_O
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        torch_augmented_A = torch.cat(
+            (warp_tensor(self._mat_A.to_torch().to(device)),
+             warp_tensor(self._mat_P.to_torch().to(device))),
+            0
+        )
+        torch_augmented_A_inv = torch.linalg.inv(torch_augmented_A.transpose(0, 1).matmul(torch_augmented_A)).matmul(torch_augmented_A.transpose(0, 1))
+        mat_A_norm_inv = self.compute_norm(torch_augmented_A_inv)
+
+        return mat_A_norm_inv
+    
+    def get_augment_mat_A2_inv_norm(self, k: float):
+        self._mat_A.fill(0)
+        self._mat_P.fill(0)
+
+        self.matrix_layer_forward(k=k, sqrt_n=self._sqrt_ni)
+        self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=1.0)  # Add P_PLUS_I
+        self.assemble_matP(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=1.0)  # ADD P_PLUS_I
+        self.matrix_layer_forward(k=k, sqrt_n=self._sqrt_no)
+        self.assemble_matA(assemble_type=int(AssembleType.ADD_P_MINUS), multiplier=1.0)  # Add P_MINUS_O
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        torch_augmented_A = torch.cat(
+            (warp_tensor(self._mat_A.to_torch().to(device)),
+             warp_tensor(self._mat_P.to_torch().to(device))),
+            0
+        )
+        torch_augmented_A_inv = torch.linalg.inv(torch_augmented_A.transpose(0, 1).matmul(torch_augmented_A)).matmul(torch_augmented_A.transpose(0, 1))
+        mat_A_norm_inv = self.compute_norm(torch_augmented_A_inv)
+
+        return mat_A_norm_inv
     
     def get_mat_Sio_norm(self, k: float):
         self._mat_A.fill(0)
@@ -655,7 +698,7 @@ class BEMManager:
             self.assemble_rhs()  # 0.5I - M_O
             # ni scope
             self.matrix_layer_forward(k=self._k, sqrt_n=self._sqrt_ni)
-            self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=-1.0)  # Reduce P_PLUS_I
+            self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=1.0)  # Reduce P_PLUS_I
             self._mat_P.fill(0)
             self.assemble_matP(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=1.0)  # ADD P_PLUS_I
         else:

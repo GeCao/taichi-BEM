@@ -36,6 +36,10 @@ class RHSConstructor3d(AbstractRHSConstructor):
 
     @ti.kernel
     def set_boundaries(self, sqrt_ni: float, sqrt_no: float):
+        self._vert_Dirichlet_boundary.fill(0)
+        self._panel_Neumann_boundary.fill(0)
+        self._f_boundary.fill(0)
+
         Dirichlet_offset_j = self._BEM_manager.get_Dirichlet_offset_j()
         Neumann_offset_j = self._BEM_manager.get_Neumann_offset_j()
         if ti.static(self._BEM_manager._is_transmission > 0):
@@ -49,6 +53,7 @@ class RHSConstructor3d(AbstractRHSConstructor):
                 x = (x1 + x2 + x3) / 3.0
                 normal_x = self._BEM_manager.get_panel_normal(global_i)
                 fx = self.analytical_function_Neumann(x, normal_x, sqrt_ni) - self.analytical_function_Neumann(x, normal_x, sqrt_no)
+                self._panel_Neumann_boundary[local_I] += self.analytical_function_Neumann(x, normal_x, sqrt_ni)
 
                 self._f_boundary[Dirichlet_offset_j + local_I] += fx
             
@@ -58,6 +63,7 @@ class RHSConstructor3d(AbstractRHSConstructor):
                 gx = self.analytical_function_Dirichlet(x, sqrt_ni) - self.analytical_function_Dirichlet(x, sqrt_no)
                 if local_I >= 0:
                     self._f_boundary[Neumann_offset_j + local_I] += gx
+                    self._vert_Dirichlet_boundary[local_I] += self.analytical_function_Dirichlet(x, sqrt_ni)
         else:
             for global_i in range(self.num_of_vertices):
                 if self._BEM_manager.get_vertice_type(global_i) == int(VertAttachType.DIRICHLET_KNOWN):
