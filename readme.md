@@ -13,7 +13,7 @@
 
 ### Norm analysis (Still Working on! 👨‍💻)
 ### left: Augmented A=[A; Pi+]---------right: Non-augmented A = A
-<img src="demo/augmented_plot.png" height="128"> <img src="demo/non_augmented_plot.png" height="128">
+<img src="demo/augmented_plot.png" height="192"> <img src="demo/non_augmented_plot.png" height="192">
 
 ### How to run the code
 
