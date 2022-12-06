@@ -39,7 +39,7 @@ def main(args):
     }
 
     demo_path = os.path.abspath(os.curdir)
-    save_path = os.path.join(demo_path, "data", "plot.png")
+    save_path = os.path.join(demo_path, "data", "augmented_plot.png")
     print(save_path)
 
     # BVP problem for Dirichlet Problem
@@ -86,8 +86,10 @@ def main(args):
         k = wave_numbers[epoch]
 
         core_manager._BEM_manager.matrix_layer_init()
-        A1_norm = core_manager._BEM_manager.get_mat_A1_norm(k)
-        A2_norm = core_manager._BEM_manager.get_mat_A2_norm(k)
+        # A1_norm = core_manager._BEM_manager.get_mat_A1_inv_norm(k)
+        # A2_norm = core_manager._BEM_manager.get_mat_A2_inv_norm(k)
+        A1_norm = core_manager._BEM_manager.get_augment_mat_A1_inv_norm(k)
+        A2_norm = core_manager._BEM_manager.get_augment_mat_A2_inv_norm(k)
 
         A1_inv_norms[epoch] = 1.0 * A1_norm
         A2_inv_norms[epoch] = 1.0 * A2_norm
