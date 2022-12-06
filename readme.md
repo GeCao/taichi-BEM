@@ -8,7 +8,7 @@
 ### Helmholtz Equation
 <img src="demo/Helmholtz_solved_Dirichlet.png" height="270">
 
-### Helmholtz Transmission Equation (Still Working on! 👨‍💻)
+### Helmholtz Transmission Equation
 <img src="demo/HelmholtzTransmission_solved_Full.png" height="270">
 
 
@@ -19,8 +19,8 @@ cd taichi-BEM
 pip install -r requirements.txt
 cd demo
 python demo_3d_Laplace.py --boundary Dirichlet
-python demo_3d_Helmholtz.py --boundary Neumann
-python demo_3d_Helmholtz_Transmission.py --boundary Neumann --k 3.14 
+python demo_3d_Helmholtz.py --boundary Neumann -k 5
+python demo_3d_Helmholtz_Transmission.py --boundary Full --k 5
 ```
 
 ### Parameters

@@ -589,6 +589,13 @@ class BEMManager:
         self.rhs_constructor.forward(assemble_type=assemble_type, k=k, sqrt_n=sqrt_n)
         self._log_manager.InfoLog("Construct all RHS Layers Done")
     
+    def compute_norm(self, A: torch.Tensor):
+        # Do your svd firstly
+        S = torch.linalg.svdvals(A)
+        A_norm = 1.0 / S.abs().min()
+
+        return A_norm
+    
     def get_mat_A1_norm(self, k: float):
         self._mat_A.fill(0)
 
@@ -597,12 +604,13 @@ class BEMManager:
         self.matrix_layer_forward(k=k, sqrt_n=self._sqrt_no)
         self.assemble_matA(assemble_type=int(AssembleType.ADD_P_MINUS), multiplier=1.0)  # Add P_MINUS_O
 
-        torch_mat_A = self._mat_A.to_torch()
-        torch_mat_A = torch_mat_A[..., 0] + torch_mat_A[..., 1] * 1j
-        torch_mat_A = torch.linalg.inv(torch_mat_A)
-        mat_A_norm = torch_mat_A.norm(p="nuc")
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        torch_mat_A = self._mat_A.to_torch().to(device)
+        torch_mat_A = warp_tensor(torch_mat_A)
+        # torch_mat_A = torch.linalg.inv(torch_mat_A)
+        mat_A_norm = self.compute_norm(torch_mat_A)
 
-        return mat_A_norm
+        return mat_A_norm.item()
     
     def get_mat_A2_norm(self, k: float):
         self._mat_A.fill(0)
@@ -612,12 +620,13 @@ class BEMManager:
         self.matrix_layer_forward(k=k, sqrt_n=self._sqrt_no)
         self.assemble_matA(assemble_type=int(AssembleType.ADD_P_MINUS), multiplier=1.0)  # Add P_MINUS_O
 
-        torch_mat_A = self._mat_A.to_torch()
-        torch_mat_A = torch_mat_A[..., 0] + torch_mat_A[..., 1] * 1j
-        torch_mat_A = torch.linalg.inv(torch_mat_A)
-        mat_A_norm = torch_mat_A.norm(p="nuc")
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        torch_mat_A = self._mat_A.to_torch().to(device)
+        torch_mat_A = warp_tensor(torch_mat_A)
+        # torch_mat_A = torch.linalg.inv(torch_mat_A)
+        mat_A_norm = self.compute_norm(torch_mat_A)
 
-        return mat_A_norm
+        return mat_A_norm.item()
     
     def get_mat_Sio_norm(self, k: float):
         self._mat_A.fill(0)

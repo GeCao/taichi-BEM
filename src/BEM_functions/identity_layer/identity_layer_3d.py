@@ -171,39 +171,42 @@ class IdentityLayer3d(AbstractIdentityLayer):
         Compute BIO matix W_mat
         Please note other than other three BIOs, this BIO has a negtive sign
         """
-        if ti.static(self.num_of_Dirichlets > 0):
-            for local_I in range(self.num_of_Dirichlets):
-                # Dirichlet Boundary
-                global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
-                self._BEM_manager.get_mat_A()[local_I + self._Dirichlet_offset_i, local_I + self._Dirichlet_offset_j] += mutiplier * self.integrate_on_single_panel(
-                    triangle_x=global_i,
-                    basis_function_index_x=-1, basis_function_index_y=-1
-                )
+        # if ti.static(self.num_of_Dirichlets > 0):
+        #     for local_I in range(self.num_of_Dirichlets):
+        #         # Dirichlet Boundary
+        #         global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
+
+        #         integrand = self.integrate_on_single_panel(
+        #             triangle_x=global_i,
+        #             basis_function_index_x=-1, basis_function_index_y=-1
+        #         )
+
+        #         self._BEM_manager.get_mat_A()[local_I + self._Dirichlet_offset_i, local_I + self._Dirichlet_offset_j] += mutiplier * integrand
             
-        if ti.static(self.num_of_Neumanns > 0):
-            num_of_Neumann_panels = self.num_of_panels - self.num_of_Dirichlets
-            if self.num_of_Neumanns == self.num_of_vertices:
-                num_of_Neumann_panels = self.num_of_panels
-            for local_I in range(num_of_Neumann_panels):
-                for iijj in range(9):
-                    ii = iijj // self._dim
-                    jj = iijj % self._dim
+        # if ti.static(self.num_of_Neumanns > 0):
+        #     num_of_Neumann_panels = self.num_of_panels - self.num_of_Dirichlets
+        #     if self.num_of_Neumanns == self.num_of_vertices:
+        #         num_of_Neumann_panels = self.num_of_panels
+        #     for local_I in range(num_of_Neumann_panels):
+        #         for iijj in range(9):
+        #             ii = iijj // self._dim
+        #             jj = iijj % self._dim
 
-                    # Neumann Boundary
-                    global_i = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_I)
+        #             # Neumann Boundary
+        #             global_i = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_I)
 
-                    global_vert_idx_i = self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_i + ii)
-                    local_vert_idx_i = self._BEM_manager.map_global_vert_index_to_local_Neumann(global_vert_idx_i)
-                    global_vert_idx_j = self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_i + jj)
-                    local_vert_idx_j = self._BEM_manager.map_global_vert_index_to_local_Neumann(global_vert_idx_j)
+        #             global_vert_idx_i = self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_i + ii)
+        #             local_vert_idx_i = self._BEM_manager.map_global_vert_index_to_local_Neumann(global_vert_idx_i)
+        #             global_vert_idx_j = self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_i + jj)
+        #             local_vert_idx_j = self._BEM_manager.map_global_vert_index_to_local_Neumann(global_vert_idx_j)
 
-                    integrand = self.integrate_on_single_panel(
-                        triangle_x=global_i,
-                        basis_function_index_x=ii, basis_function_index_y=jj
-                    )
+        #             integrand = self.integrate_on_single_panel(
+        #                 triangle_x=global_i,
+        #                 basis_function_index_x=ii, basis_function_index_y=jj
+        #             )
 
-                    if local_vert_idx_i >= 0 and local_vert_idx_j >= 0:
-                        self._BEM_manager.get_mat_A()[local_vert_idx_i + self._Neumann_offset_i, local_vert_idx_j + self._Neumann_offset_j] += mutiplier * integrand
+        #             if local_vert_idx_i >= 0 and local_vert_idx_j >= 0:
+        #                 self._BEM_manager.get_mat_A()[local_vert_idx_i + self._Neumann_offset_i, local_vert_idx_j + self._Neumann_offset_j] += mutiplier * integrand
         
         if ti.static(self._BEM_manager._is_transmission > 0):
             num_of_Neumann_panels = self.num_of_panels
@@ -229,39 +232,39 @@ class IdentityLayer3d(AbstractIdentityLayer):
         Compute BIO matix W_mat
         Please note other than other three BIOs, this BIO has a negtive sign
         """
-        if ti.static(self.num_of_Dirichlets > 0):
-            for local_I in range(self.num_of_Dirichlets):
-                # Dirichlet Boundary
-                global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
-                self._BEM_manager.get_mat_P()[local_I + self._Dirichlet_offset_i, local_I + self._Dirichlet_offset_j] += mutiplier * self.integrate_on_single_panel(
-                    triangle_x=global_i,
-                    basis_function_index_x=-1, basis_function_index_y=-1
-                )
+        # if ti.static(self.num_of_Dirichlets > 0):
+        #     for local_I in range(self.num_of_Dirichlets):
+        #         # Dirichlet Boundary
+        #         global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
+        #         self._BEM_manager.get_mat_P()[local_I + self._Dirichlet_offset_i, local_I + self._Dirichlet_offset_j] += mutiplier * self.integrate_on_single_panel(
+        #             triangle_x=global_i,
+        #             basis_function_index_x=-1, basis_function_index_y=-1
+        #         )
             
-        if ti.static(self.num_of_Neumanns > 0):
-            num_of_Neumann_panels = self.num_of_panels - self.num_of_Dirichlets
-            if self.num_of_Neumanns == self.num_of_vertices:
-                num_of_Neumann_panels = self.num_of_panels
-            for local_I in range(num_of_Neumann_panels):
-                for iijj in range(9):
-                    ii = iijj // self._dim
-                    jj = iijj % self._dim
+        # if ti.static(self.num_of_Neumanns > 0):
+        #     num_of_Neumann_panels = self.num_of_panels - self.num_of_Dirichlets
+        #     if self.num_of_Neumanns == self.num_of_vertices:
+        #         num_of_Neumann_panels = self.num_of_panels
+        #     for local_I in range(num_of_Neumann_panels):
+        #         for iijj in range(9):
+        #             ii = iijj // self._dim
+        #             jj = iijj % self._dim
 
-                    # Neumann Boundary
-                    global_i = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_I)
+        #             # Neumann Boundary
+        #             global_i = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_I)
 
-                    global_vert_idx_i = self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_i + ii)
-                    local_vert_idx_i = self._BEM_manager.map_global_vert_index_to_local_Neumann(global_vert_idx_i)
-                    global_vert_idx_j = self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_i + jj)
-                    local_vert_idx_j = self._BEM_manager.map_global_vert_index_to_local_Neumann(global_vert_idx_j)
+        #             global_vert_idx_i = self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_i + ii)
+        #             local_vert_idx_i = self._BEM_manager.map_global_vert_index_to_local_Neumann(global_vert_idx_i)
+        #             global_vert_idx_j = self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_i + jj)
+        #             local_vert_idx_j = self._BEM_manager.map_global_vert_index_to_local_Neumann(global_vert_idx_j)
 
-                    integrand = self.integrate_on_single_panel(
-                        triangle_x=global_i,
-                        basis_function_index_x=ii, basis_function_index_y=jj
-                    )
+        #             integrand = self.integrate_on_single_panel(
+        #                 triangle_x=global_i,
+        #                 basis_function_index_x=ii, basis_function_index_y=jj
+        #             )
 
-                    if local_vert_idx_i >= 0 and local_vert_idx_j >= 0:
-                        self._BEM_manager.get_mat_P()[local_vert_idx_i + self._Neumann_offset_i, local_vert_idx_j + self._Neumann_offset_j] += mutiplier * integrand
+        #             if local_vert_idx_i >= 0 and local_vert_idx_j >= 0:
+        #                 self._BEM_manager.get_mat_P()[local_vert_idx_i + self._Neumann_offset_i, local_vert_idx_j + self._Neumann_offset_j] += mutiplier * integrand
         
         if ti.static(self._BEM_manager._is_transmission > 0):
             num_of_Neumann_panels = self.num_of_panels

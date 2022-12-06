@@ -73,8 +73,8 @@ def main(args):
         vec_result = du_dx1 * normal_x.x + du_dx2 * normal_x.y + du_dx3 * normal_x.z
         return vec_result
     
-    N = 10
-    wave_numbers = [i * 1.0 / N for i in range(15 * N)]
+    N = 5
+    wave_numbers = [1.0 + i * 1.0 / N for i in range(15 * N)]
     A1_inv_norms = [0.0 for i in range(len(wave_numbers))]
     A2_inv_norms = [0.0 for i in range(len(wave_numbers))]
     core_manager = CoreManager(simulation_parameters)
