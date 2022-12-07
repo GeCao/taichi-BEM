@@ -597,6 +597,14 @@ class BEMManager:
 
         return A_norm.item()
     
+    def compute_inv_norm(self, A: torch.Tensor):
+        # Do your svd firstly
+        ATA = A.transpose(0, 1).matmul(A)
+        S = torch.linalg.svdvals(ATA)
+        A_norm = 1.0 / torch.sqrt(S.min())
+
+        return A_norm.item()
+    
     def get_mat_A1_inv_norm(self, k: float):
         self._mat_A.fill(0)
 
@@ -608,8 +616,8 @@ class BEMManager:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         torch_mat_A = self._mat_A.to_torch().to(device)
         torch_mat_A = warp_tensor(torch_mat_A)
-        torch_mat_A = torch.linalg.inv(torch_mat_A)
-        mat_A_norm = self.compute_norm(torch_mat_A)
+        # torch_mat_A = torch.linalg.inv(torch_mat_A)
+        mat_A_norm = self.compute_inv_norm(torch_mat_A)
 
         return mat_A_norm
     
@@ -624,8 +632,8 @@ class BEMManager:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         torch_mat_A = self._mat_A.to_torch().to(device)
         torch_mat_A = warp_tensor(torch_mat_A)
-        torch_mat_A = torch.linalg.inv(torch_mat_A)
-        mat_A_norm = self.compute_norm(torch_mat_A)
+        # torch_mat_A = torch.linalg.inv(torch_mat_A)
+        mat_A_norm = self.compute_inv_norm(torch_mat_A)
 
         return mat_A_norm
     
@@ -645,8 +653,8 @@ class BEMManager:
              warp_tensor(self._mat_P.to_torch().to(device))),
             0
         )
-        torch_augmented_A_inv = torch.linalg.inv(torch_augmented_A.transpose(0, 1).matmul(torch_augmented_A)).matmul(torch_augmented_A.transpose(0, 1))
-        mat_A_norm_inv = self.compute_norm(torch_augmented_A_inv)
+        # torch_augmented_A_inv = torch.linalg.inv(torch_augmented_A.transpose(0, 1).matmul(torch_augmented_A)).matmul(torch_augmented_A.transpose(0, 1))
+        mat_A_norm_inv = self.compute_inv_norm(torch_augmented_A)
 
         return mat_A_norm_inv
     
@@ -666,8 +674,8 @@ class BEMManager:
              warp_tensor(self._mat_P.to_torch().to(device))),
             0
         )
-        torch_augmented_A_inv = torch.linalg.inv(torch_augmented_A.transpose(0, 1).matmul(torch_augmented_A)).matmul(torch_augmented_A.transpose(0, 1))
-        mat_A_norm_inv = self.compute_norm(torch_augmented_A_inv)
+        # torch_augmented_A_inv = torch.linalg.inv(torch_augmented_A.transpose(0, 1).matmul(torch_augmented_A)).matmul(torch_augmented_A.transpose(0, 1))
+        mat_A_norm_inv = self.compute_inv_norm(torch_augmented_A)
 
         return mat_A_norm_inv
     

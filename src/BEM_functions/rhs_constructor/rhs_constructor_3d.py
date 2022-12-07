@@ -60,6 +60,7 @@ class RHSConstructor3d(AbstractRHSConstructor):
             for vert_index in range(self.num_of_Neumanns):
                 local_I = self._BEM_manager.map_global_vert_index_to_local_Neumann(vert_index)
                 x = self._BEM_manager.get_vertice(vert_index)
+                normal_x = self._BEM_manager.get_vert_normal(vert_index)
                 gx = self.analytical_function_Dirichlet(x, sqrt_ni) - self.analytical_function_Dirichlet(x, sqrt_no)
                 if local_I >= 0:
                     self._f_boundary[Neumann_offset_j + local_I] += gx
