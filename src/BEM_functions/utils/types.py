@@ -2,17 +2,18 @@ from enum import Enum
 
 
 class CellFluxType(Enum):
-    NEUMANN_KNOWN = 0
-    TOBESOLVED=1
-    MIX=2
+    NEUMANN_TOBESOLVED = 0
+    DIRICHLET_TOBESOLVED=1
+    BOTH_TOBESOLVED=2
 
     def __int__(self):
         return self.value
 
 
 class VertAttachType(Enum):
-    DIRICHLET_KNOWN = 0
-    TOBESOLVED=1
+    NEUMANN_TOBESOLVED = 0
+    DIRICHLET_TOBESOLVED=1
+    BOTH_TOBESOLVED=2
 
     def __int__(self):
         return self.value

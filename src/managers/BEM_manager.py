@@ -65,13 +65,33 @@ class BEMManager:
         
         self.num_of_vertices = self._core_manager._mesh_manager.get_num_of_vertices()
         self.num_of_panels = self._core_manager._mesh_manager.get_num_of_panels()
-        self.num_of_Dirichlets = self._core_manager._mesh_manager.get_num_of_Dirichlets()
-        self.num_of_Neumanns = self._core_manager._mesh_manager.get_num_of_Neumanns()
+
+        # Neumann: When Dirichlet/Neumann boundary applied and you want to solve Neumann
+        # Default your basis function as constant (Use N_{})
+        self.N_Neumann = self._core_manager._mesh_manager.get_N_Neumann()
+        self.shape_func_degree_Neumann = self._core_manager._mesh_manager.get_shape_func_degree_Neumann()
+        # Dirichlet: When Dirichlet/Neumann boundary applied and you wnat to solve Dirichlet
+        # Default your basis function as linear (Use M_{})
+        self.M_Dirichlet = self._core_manager._mesh_manager.get_M_Dirichlet()
+        self.shape_func_degree_Dirichlet = self._core_manager._mesh_manager.get_shape_func_degree_Dirichlet()
+
+        self.num_of_panels_Neumann = self._core_manager._mesh_manager.get_num_of_panels_Neumann()
+        self.num_of_panels_Dirichlet = self._core_manager._mesh_manager.get_num_of_panels_Dirichlet()
 
         self._Dirichlet_offset_i = 0
-        self._Neumann_offset_i = self.num_of_Dirichlets
-        self._Dirichlet_offset_j = self.num_of_Neumanns
+        self._Neumann_offset_i = 0
+        self._Dirichlet_offset_j = 0
         self._Neumann_offset_j = 0
+
+        if self.shape_func_degree_Neumann == 0:
+            self._Dirichlet_offset_i = self.N_Neumann
+        elif self.shape_func_degree_Neumann == 1:
+            self._Dirichlet_offset_i = self.N_Neumann
+        
+        if self.shape_func_degree_Dirichlet == 0:
+            self._Neumann_offset_j = self.M_Dirichlet
+        elif self.shape_func_degree_Dirichlet == 1:
+            self._Neumann_offset_j = self.M_Dirichlet
 
         self.analytical_function_Dirichlet = analytical_function_Dirichlet
         self.analytical_function_Neumann = analytical_function_Neumann
@@ -81,21 +101,21 @@ class BEMManager:
         self.analytical_solved = ti.Vector.field(self._n, self._ti_dtype, shape=(self.num_of_vertices, ))
 
         # The final global Ax=rhs
-        self.raw_solved = ti.Vector.field(self._n, self._ti_dtype, shape=(self.num_of_Dirichlets + self.num_of_Neumanns, ))
-        self.raw_analytical_solved = ti.Vector.field(self._n, self._ti_dtype, shape=(self.num_of_Dirichlets + self.num_of_Neumanns, ))
+        self.raw_solved = ti.Vector.field(self._n, self._ti_dtype, shape=(self.N_Neumann + self.M_Dirichlet, ))
+        self.raw_analytical_solved = ti.Vector.field(self._n, self._ti_dtype, shape=(self.N_Neumann + self.M_Dirichlet, ))
         self._mat_A = ti.Vector.field(
             self._n,
             self._ti_dtype,
-            shape=(self.num_of_Dirichlets + self.num_of_Neumanns, self.num_of_Dirichlets + self.num_of_Neumanns)
+            shape=(self.N_Neumann + self.M_Dirichlet, self.N_Neumann + self.M_Dirichlet)
         )
-        self.rhs = ti.Vector.field(self._n, self._ti_dtype, shape=(self.num_of_Dirichlets + self.num_of_Neumanns, ))
+        self.rhs = ti.Vector.field(self._n, self._ti_dtype, shape=(self.N_Neumann + self.M_Dirichlet, ))
         self._mat_P = ti.Vector.field(self._n, self._ti_dtype, shape=())
         if self._is_transmission > 0:
-            self.rhs = ti.Vector.field(self._n, self._ti_dtype, shape=(2 * (self.num_of_Dirichlets + self.num_of_Neumanns), ))
+            self.rhs = ti.Vector.field(self._n, self._ti_dtype, shape=(2 * (self.N_Neumann + self.M_Dirichlet), ))
             self._mat_P = ti.Vector.field(
                 self._n,
                 self._ti_dtype,
-                shape=(self.num_of_Dirichlets + self.num_of_Neumanns, self.num_of_Dirichlets + self.num_of_Neumanns)
+                shape=(self.N_Neumann + self.M_Dirichlet, self.N_Neumann + self.M_Dirichlet)
             )
 
         # For visualization
@@ -169,11 +189,106 @@ class BEMManager:
     def get_num_of_panels(self):
         return self.num_of_panels
 
-    def get_num_of_Dirichlets(self):
-        return self.num_of_Dirichlets
+    def get_M_Dirichlet(self):
+        return self.M_Dirichlet
     
-    def get_num_of_Neumanns(self):
-        return self.num_of_Neumanns
+    def get_N_Neumann(self):
+        return self.N_Neumann
+
+    def get_num_of_panels_Neumann(self):
+        return self.num_of_panels_Neumann
+    
+    def get_num_of_panels_Dirichlet(self):
+        return self.num_of_panels_Dirichlet
+    
+    def get_shape_func_degree_Neumann(self):
+        return self.shape_func_degree_Neumann
+    
+    def get_shape_func_degree_Dirichlet(self):
+        return self.shape_func_degree_Dirichlet
+    
+    @ti.func
+    def get_num_of_basis_functions_from_Q(self, Q_):
+        result = -1
+        if Q_ == 0:
+            # constant
+            result = 1
+        elif Q_ == 1:
+            # Linear
+            result = self._dim
+        
+        return result
+    
+    @ti.func
+    def get_basis_function_index(self, Q_, ii):
+        result = -1
+        if Q_ == 1:
+            result = ii
+        
+        return result
+    
+    @ti.func
+    def proj_from_local_panel_index_to_local_charge_index(
+        self,
+        Q_,
+        local_panel_index,
+        basis_func_index,
+        panel_type: int,
+    ):
+        result = -1
+
+        if Q_ == 0:
+            # Constant on faces
+            result = local_panel_index
+        elif Q_ == 1:
+            # Linear on vertices
+            global_panel_I = -1
+            global_vert_i = -1
+            if panel_type == int(CellFluxType.NEUMANN_TOBESOLVED):
+                global_panel_I = self.map_local_Neumann_index_to_panel_index(local_panel_index)
+                global_vert_i = self.get_vertice_index_from_flat_panel_index(self._dim * global_panel_I + basis_func_index)
+                local_vert_i = self.map_global_vert_index_to_local_Neumann(global_vert_i)
+                result = local_vert_i
+            elif panel_type == int(CellFluxType.DIRICHLET_TOBESOLVED):
+                global_panel_I = self.map_local_Dirichlet_index_to_panel_index(local_panel_index)
+                global_vert_i = self.get_vertice_index_from_flat_panel_index(self._dim * global_panel_I + basis_func_index)
+                local_vert_i = self.map_global_vert_index_to_local_Dirichlet(global_vert_i)
+                result = local_vert_i
+        
+        return result
+    
+    @ti.func
+    def proj_from_local_panel_index_to_global_charge_index(
+        self,
+        Q_,
+        local_panel_index,
+        basis_func_index,
+        panel_type: int,
+    ):
+        result = -1
+
+        if Q_ == 0:
+            # Constant on faces
+            if panel_type == int(CellFluxType.NEUMANN_TOBESOLVED):
+                global_panel_I = self.map_local_Neumann_index_to_panel_index(local_panel_index)
+                result = global_panel_I
+            elif panel_type == int(CellFluxType.DIRICHLET_TOBESOLVED):
+                global_panel_I = self.map_local_Dirichlet_index_to_panel_index(local_panel_index)
+                result = global_panel_I
+        elif Q_ == 1:
+            # Linear on vertices
+            global_panel_I = -1
+            global_vert_i = -1
+            if panel_type == int(CellFluxType.NEUMANN_TOBESOLVED):
+                global_panel_I = self.map_local_Neumann_index_to_panel_index(local_panel_index)
+                global_vert_i = self.get_vertice_index_from_flat_panel_index(self._dim * global_panel_I + basis_func_index)
+                result = global_vert_i
+            elif panel_type == int(CellFluxType.DIRICHLET_TOBESOLVED):
+                global_panel_I = self.map_local_Dirichlet_index_to_panel_index(local_panel_index)
+                global_vert_i = self.get_vertice_index_from_flat_panel_index(self._dim * global_panel_I + basis_func_index)
+                result = global_vert_i
+        
+        return result
 
     @ti.func
     def get_vertice(self, vert_index):
@@ -211,6 +326,10 @@ class BEMManager:
     @ti.func
     def map_local_Neumann_index_to_panel_index(self, local_index):
         return self._core_manager._mesh_manager.map_local_Neumann_index_to_panel_index(local_index)
+    
+    @ti.func
+    def map_global_vert_index_to_local_Dirichlet(self, vert_index):
+        return self._core_manager._mesh_manager.map_global_vert_index_to_local_Dirichlet(vert_index)
     
     @ti.func
     def map_global_vert_index_to_local_Neumann(self, vert_index):
@@ -333,51 +452,49 @@ class BEMManager:
         self.analytical_vert_color.fill(0)
         self.diff_vert_color.fill(0)
 
-        max_analytical_Neumann_boundary = -5e11
-        max_analytical_Dirichlet_boundary = -5e11
-        mean_solved_Neumann_boundary = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
-        mean_analytical_Neumann_boundary = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+        max_analytical_Neumann_solved = -5e11
+        max_analytical_Dirichlet_solved = -5e11
+        mean_solved_Dirichlet = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+        mean_analytical_Dirichlet_solved = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
 
         for i in range(self.num_of_vertices):
-            if self.get_vertice_type(i) == int(VertAttachType.DIRICHLET_KNOWN) and self._is_transmission <= 0:
-                # Dirichlet boundary, solved variables is Neumann
-                ti.atomic_max(max_analytical_Dirichlet_boundary, self.analytical_solved[i].norm())
-            else:
-                # Neumann boundary, solved variables is Dirichlet
-                mean_solved_Neumann_boundary += self.solved[i] / self.num_of_Neumanns
-                mean_analytical_Neumann_boundary += self.analytical_solved[i] / self.num_of_Neumanns
-                ti.atomic_max(max_analytical_Neumann_boundary, self.analytical_solved[i].norm())
+            if self.get_vertice_type(i) == int(VertAttachType.NEUMANN_TOBESOLVED):
+                ti.atomic_max(max_analytical_Neumann_solved, self.analytical_solved[i].norm())
+            elif self.get_vertice_type(i) == int(VertAttachType.DIRICHLET_TOBESOLVED) or \
+                self.get_vertice_type(i) == int(VertAttachType.BOTH_TOBESOLVED):
+                # mean_solved_Dirichlet += self.solved[i] / self.num_of_vertices_Dirichlet
+                # mean_analytical_Dirichlet_solved += self.analytical_solved[i] / self.num_of_vertices_Dirichlet
+                ti.atomic_max(max_analytical_Dirichlet_solved, self.analytical_solved[i].norm())
         
         # Do your scale:
-        for i in range(self.num_of_vertices):
-            if self.get_vertice_type(i) == int(VertAttachType.TOBESOLVED) or self._is_transmission > 0:
-                # Neumann boundary, solved variables is Dirichlet
-                self.solved[i] += mean_analytical_Neumann_boundary - mean_solved_Neumann_boundary
+        # for i in range(self.num_of_vertices):
+        #     if self.get_vertice_type(i) == int(VertAttachType.DIRICHLET_TOBESOLVED) or \
+        #         self.get_vertice_type(i) == int(VertAttachType.BOTH_TOBESOLVED):
+        #         self.solved[i] += mean_analytical_Dirichlet_solved - mean_solved_Dirichlet
                 
         for i in range(self.num_of_vertices):
-            if self.get_vertice_type(i) == int(VertAttachType.DIRICHLET_KNOWN) and self._is_transmission <= 0:
-                # Dirichlet boundary, solved variables is Neumann
+            if self.get_vertice_type(i) == int(VertAttachType.NEUMANN_TOBESOLVED):
                 if self.analytical_solved[i].x > 0:
-                    self.analytical_vert_color[i].x = self.analytical_solved[i].norm() / max_analytical_Dirichlet_boundary
+                    self.analytical_vert_color[i].x = self.analytical_solved[i].norm() / max_analytical_Neumann_solved
                 else:
-                    self.analytical_vert_color[i].z = self.analytical_solved[i].norm() / max_analytical_Dirichlet_boundary
+                    self.analytical_vert_color[i].z = self.analytical_solved[i].norm() / max_analytical_Neumann_solved
                 
                 if self.solved[i].x > 0:
-                    self.solved_vert_color[i].x = self.solved[i].norm() / max_analytical_Dirichlet_boundary
+                    self.solved_vert_color[i].x = self.solved[i].norm() / max_analytical_Neumann_solved
                 else:
-                    self.solved_vert_color[i].z = self.solved[i].norm() / max_analytical_Dirichlet_boundary
+                    self.solved_vert_color[i].z = self.solved[i].norm() / max_analytical_Neumann_solved
                 
-            else:
-                # Neumann boundary, solved variables is Dirichlet
+            elif self.get_vertice_type(i) == int(VertAttachType.DIRICHLET_TOBESOLVED) or \
+                self.get_vertice_type(i) == int(VertAttachType.BOTH_TOBESOLVED):
                 if self.analytical_solved[i].x > 0:
-                    self.analytical_vert_color[i].x = self.analytical_solved[i].norm() / max_analytical_Neumann_boundary
+                    self.analytical_vert_color[i].x = self.analytical_solved[i].norm() / max_analytical_Dirichlet_solved
                 else:
-                    self.analytical_vert_color[i].z = self.analytical_solved[i].norm() / max_analytical_Neumann_boundary
+                    self.analytical_vert_color[i].z = self.analytical_solved[i].norm() / max_analytical_Dirichlet_solved
                 
                 if self.solved[i].x > 0:
-                    self.solved_vert_color[i].x = self.solved[i].norm() / max_analytical_Neumann_boundary
+                    self.solved_vert_color[i].x = self.solved[i].norm() / max_analytical_Dirichlet_solved
                 else:
-                    self.solved_vert_color[i].z = self.solved[i].norm() / max_analytical_Neumann_boundary
+                    self.solved_vert_color[i].z = self.solved[i].norm() / max_analytical_Dirichlet_solved
             
             self.diff_vert_color[i].y = ti.abs(
                 self.solved_vert_color[i].x - self.analytical_vert_color[i].x - self.solved_vert_color[i].z + self.analytical_vert_color[i].z
@@ -397,21 +514,21 @@ class BEMManager:
     @ti.kernel
     def matA_add_M(self, multiplier: float):
         # += M
-        if ti.static(self.num_of_Dirichlets > 0):
+        if ti.static(self.N_Neumann > 0):
             for I, J in self.single_layer._Vmat:
-                self._mat_A[I + self._Dirichlet_offset_i, J + self._Dirichlet_offset_j] += -multiplier * self.single_layer._Vmat[I, J]
+                self._mat_A[I + self._Neumann_offset_i, J + self._Neumann_offset_j] += -multiplier * self.single_layer._Vmat[I, J]
         
-        if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
+        if ti.static(self.N_Neumann * self.M_Dirichlet > 0):
             for I, J in self.double_layer._Kmat:
-                self._mat_A[I + self._Dirichlet_offset_i, J + self._Neumann_offset_j] += multiplier * self.double_layer._Kmat[I, J]
+                self._mat_A[I + self._Neumann_offset_i, J + self._Dirichlet_offset_j] += multiplier * self.double_layer._Kmat[I, J]
         
-        if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
+        if ti.static(self.M_Dirichlet * self.N_Neumann > 0):
             for I, J in self.adj_double_layer._Kmat:
-                self._mat_A[I + self._Neumann_offset_i, J + self._Dirichlet_offset_j] += -multiplier * self.adj_double_layer._Kmat[I, J]
+                self._mat_A[I + self._Dirichlet_offset_i, J + self._Neumann_offset_j] += -multiplier * self.adj_double_layer._Kmat[I, J]
         
-        if ti.static(self.num_of_Neumanns > 0):
+        if ti.static(self.M_Dirichlet > 0):
             for I, J in self.hypersingular_layer._Wmat:
-                self._mat_A[I + self._Neumann_offset_i, J + self._Neumann_offset_j] += -multiplier * self.hypersingular_layer._Wmat[I, J]
+                self._mat_A[I + self._Dirichlet_offset_i, J + self._Dirichlet_offset_j] += -multiplier * self.hypersingular_layer._Wmat[I, J]
 
     def assemble_matA(self, assemble_type: int, multiplier: float):
         """
@@ -433,21 +550,21 @@ class BEMManager:
     @ti.kernel
     def matP_add_M(self, multiplier: float):
         # += M
-        if ti.static(self.num_of_Dirichlets > 0):
+        if ti.static(self.N_Neumann > 0):
             for I, J in self.single_layer._Vmat:
-                self._mat_P[I + self._Dirichlet_offset_i, J + self._Dirichlet_offset_j] += -multiplier * self.single_layer._Vmat[I, J]
+                self._mat_P[I + self._Neumann_offset_i, J + self._Neumann_offset_j] += -multiplier * self.single_layer._Vmat[I, J]
         
-        if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
+        if ti.static(self.N_Neumann * self.M_Dirichlet > 0):
             for I, J in self.double_layer._Kmat:
-                self._mat_P[I + self._Dirichlet_offset_i, J + self._Neumann_offset_j] += multiplier * self.double_layer._Kmat[I, J]
+                self._mat_P[I + self._Neumann_offset_i, J + self._Dirichlet_offset_j] += multiplier * self.double_layer._Kmat[I, J]
         
-        if ti.static(self.num_of_Dirichlets * self.num_of_Neumanns > 0):
+        if ti.static(self.M_Dirichlet * self.N_Neumann > 0):
             for I, J in self.adj_double_layer._Kmat:
-                self._mat_P[I + self._Neumann_offset_i, J + self._Dirichlet_offset_j] += -multiplier * self.adj_double_layer._Kmat[I, J]
+                self._mat_P[I + self._Dirichlet_offset_i, J + self._Neumann_offset_j] += -multiplier * self.adj_double_layer._Kmat[I, J]
         
-        if ti.static(self.num_of_Neumanns > 0):
+        if ti.static(self.M_Dirichlet > 0):
             for I, J in self.hypersingular_layer._Wmat:
-                self._mat_P[I + self._Neumann_offset_i, J + self._Neumann_offset_j] += -multiplier * self.hypersingular_layer._Wmat[I, J]
+                self._mat_P[I + self._Dirichlet_offset_i, J + self._Dirichlet_offset_j] += -multiplier * self.hypersingular_layer._Wmat[I, J]
     
     def assemble_matP(self, assemble_type: int, multiplier: float):
         """
@@ -492,27 +609,50 @@ class BEMManager:
         else:
             Dirichlet_offset = self._Dirichlet_offset_j
             Neumann_offset = self._Neumann_offset_j
-            if ti.static(self.num_of_Dirichlets > 0):
-                for local_I in range(self.num_of_Dirichlets):
-                    # Dirichlet boundary
-                    global_i = self.map_local_Dirichlet_index_to_panel_index(local_I)
-                    x1 = self.get_vertice_from_flat_panel_index(self._dim * global_i + 0)
-                    x2 = self.get_vertice_from_flat_panel_index(self._dim * global_i + 1)
-                    x3 = self.get_vertice_from_flat_panel_index(self._dim * global_i + 2)
-                    x = (x1 + x2 + x3) / 3.0
-                    normal_x = self.get_panel_normal(global_i)
-                    fx = self.rhs_constructor.analytical_function_Neumann(x, normal_x)
-                    self.raw_analytical_solved[local_I + Dirichlet_offset] = fx
+            if ti.static(self.N_Neumann > 0):
+                if ti.static(self.shape_func_degree_Neumann == 0):
+                    for local_I in range(self.num_of_panels_Neumann):
+                        # Solve Neumann
+                        global_i = self.map_local_Neumann_index_to_panel_index(local_I)
+                        x1 = self.get_vertice_from_flat_panel_index(self._dim * global_i + 0)
+                        x2 = self.get_vertice_from_flat_panel_index(self._dim * global_i + 1)
+                        x3 = self.get_vertice_from_flat_panel_index(self._dim * global_i + 2)
+                        x = (x1 + x2 + x3) / 3.0
+                        normal_x = self.get_panel_normal(global_i)
+                        fx = self.rhs_constructor.analytical_function_Neumann(x, normal_x)
+                        self.raw_analytical_solved[local_I + Neumann_offset] = fx
+                elif ti.static(self.shape_func_degree_Neumann == 1):
+                    for global_vert_i in range(self.num_of_vertices):
+                        # Solve Neumann
+                        if self.get_vertice_type(global_vert_i) == int(VertAttachType.NEUMANN_TOBESOLVED):
+                            local_vert_i = self.map_global_vert_index_to_local_Neumann(global_vert_i)
+                            x = self.get_vertice(global_vert_i)
+                            normal_x = self.get_vert_normal(global_vert_i)
+                            fx = self.rhs_constructor.analytical_function_Neumann(x, normal_x)
+                            self.raw_analytical_solved[local_vert_i + Neumann_offset] = fx
             
-            if ti.static(self.num_of_Neumanns > 0):
-                for global_i in range(self.num_of_vertices):
-                    if self.get_vertice_type(global_i) == int(VertAttachType.TOBESOLVED):
-                        local_I = self.map_global_vert_index_to_local_Neumann(global_i)
-                        x = self.get_vertice(global_i)
-                        normal_x = self.get_vert_normal(global_i)
+            if ti.static(self.M_Dirichlet > 0):
+                if ti.static(self.shape_func_degree_Dirichlet == 0):
+                    for local_I in range(self.num_of_panels_Dirichlet):
+                        # Solve Dirichlet
+                        global_i = self.map_local_Dirichlet_index_to_panel_index(local_I)
+                        x1 = self.get_vertice_from_flat_panel_index(self._dim * global_i + 0)
+                        x2 = self.get_vertice_from_flat_panel_index(self._dim * global_i + 1)
+                        x3 = self.get_vertice_from_flat_panel_index(self._dim * global_i + 2)
+                        x = (x1 + x2 + x3) / 3.0
+                        normal_x = self.get_panel_normal(global_i)
                         gx = self.rhs_constructor.analytical_function_Dirichlet(x)
-                        if local_I >= 0:
-                            self.raw_analytical_solved[local_I + Neumann_offset] = gx
+                        self.raw_analytical_solved[local_vert_i + Dirichlet_offset] = gx
+                elif ti.static(self.shape_func_degree_Dirichlet == 1):
+                    for global_vert_i in range(self.num_of_vertices):
+                        if self.get_vertice_type(global_vert_i) == int(VertAttachType.DIRICHLET_TOBESOLVED) or \
+                            self.get_vertice_type(global_vert_i) == int(VertAttachType.BOTH_TOBESOLVED):
+                            local_vert_i = self.map_global_vert_index_to_local_Dirichlet(global_vert_i)
+                            x = self.get_vertice(global_vert_i)
+                            normal_x = self.get_vert_normal(global_vert_i)
+                            gx = self.rhs_constructor.analytical_function_Dirichlet(x)
+                            if local_vert_i >= 0:
+                                self.raw_analytical_solved[local_vert_i + Dirichlet_offset] = gx
         
         for I in self.raw_analytical_solved:
             if ti.static(self._n == 2):
@@ -523,34 +663,48 @@ class BEMManager:
         self.solved.fill(0)
         
         if ti.static(self._dim == 3):
-            Dirichlet_boundary_offset = self._Dirichlet_offset_j
-            Neumann_boundary_offset = self._Neumann_offset_j
+            Dirichlet_offset = self._Dirichlet_offset_j
+            Neumann_offset = self._Neumann_offset_j
             if self._is_transmission:
-                Dirichlet_boundary_offset = self._Dirichlet_offset_i
-                Neumann_boundary_offset = self._Neumann_offset_i
-            if ti.static(self._is_transmission <= 0):
-                for I in range(self.num_of_Dirichlets):
-                    # Dirichlet boundary
-                    global_i = self.map_local_Dirichlet_index_to_panel_index(I)
-
-                    x1_idx = self.get_vertice_index_from_flat_panel_index(self._dim * global_i + 0)
-                    x2_idx = self.get_vertice_index_from_flat_panel_index(self._dim * global_i + 1)
-                    x3_idx = self.get_vertice_index_from_flat_panel_index(self._dim * global_i + 2)
-
-                    self.solved[x1_idx] += self.raw_solved[Dirichlet_boundary_offset + I] * self.get_panel_area(global_i) / 3.0 / self.get_vert_area(x1_idx)
-                    self.solved[x2_idx] += self.raw_solved[Dirichlet_boundary_offset + I] * self.get_panel_area(global_i) / 3.0 / self.get_vert_area(x2_idx)
-                    self.solved[x3_idx] += self.raw_solved[Dirichlet_boundary_offset + I] * self.get_panel_area(global_i) / 3.0 / self.get_vert_area(x3_idx)
-
-                    self.analytical_solved[x1_idx] += self.raw_analytical_solved[Dirichlet_boundary_offset + I] * self.get_panel_area(global_i) / 3.0 / self.get_vert_area(x1_idx)
-                    self.analytical_solved[x2_idx] += self.raw_analytical_solved[Dirichlet_boundary_offset + I] * self.get_panel_area(global_i) / 3.0 / self.get_vert_area(x2_idx)
-                    self.analytical_solved[x3_idx] += self.raw_analytical_solved[Dirichlet_boundary_offset + I] * self.get_panel_area(global_i) / 3.0 / self.get_vert_area(x3_idx)
+                Dirichlet_offset = self._Dirichlet_offset_i
+                Neumann_offset = self._Neumann_offset_i
             
-            for global_i in range(self.num_of_vertices):
-                if self.get_vertice_type(global_i) == int(VertAttachType.TOBESOLVED):
-                    local_I = self.map_global_vert_index_to_local_Neumann(global_i)
-                    if local_I >= 0:
-                        self.solved[global_i] = self.raw_solved[Neumann_boundary_offset + local_I]
-                        self.analytical_solved[global_i] = self.raw_analytical_solved[Neumann_boundary_offset + local_I]
+            if ti.static(self.shape_func_degree_Neumann == 0):
+                for I in range(self.num_of_panels_Neumann):
+                    global_i = self.map_local_Neumann_index_to_panel_index(I)
+                    area_x = self.get_panel_area(global_i)
+                    for ii in range(self._dim):
+                        global_vert_idx_i = self.get_vertice_index_from_flat_panel_index(self._dim * global_i + ii)
+                        area_vert_i = self.get_vert_area(global_vert_idx_i)
+
+                        self.solved[global_vert_idx_i] += self.raw_solved[Neumann_offset + I] * area_x / 3.0 / area_vert_i
+                        self.analytical_solved[global_vert_idx_i] += self.raw_analytical_solved[Neumann_offset + I] * area_x / 3.0 / area_vert_i
+            elif ti.static(self.shape_func_degree_Neumann == 1):
+                for global_vert_i in range(self.num_of_vertices):
+                    if self.get_vertice_type(global_vert_i) == int(VertAttachType.NEUMANN_TOBESOLVED):
+                        local_I = self.map_global_vert_index_to_local_Neumann(global_vert_i)
+                        if local_I >= 0:
+                            self.solved[global_vert_i] = self.raw_solved[Neumann_offset + local_I]
+                            self.analytical_solved[global_vert_i] = self.raw_analytical_solved[Neumann_offset + local_I]
+            
+            if ti.static(self.shape_func_degree_Dirichlet == 0):
+                for I in range(self.num_of_panels_Dirichlet):
+                    global_i = self.map_local_Dirichlet_index_to_panel_index(I)
+                    area_x = self.get_panel_area(global_i)
+                    for ii in range(self._dim):
+                        global_vert_idx_i = self.get_vertice_index_from_flat_panel_index(self._dim * global_i + ii)
+                        area_vert_i = self.get_vert_area(global_vert_idx_i)
+
+                        self.solved[global_vert_idx_i] += self.raw_solved[Dirichlet_offset + I] * area_x / 3.0 / area_vert_i
+                        self.analytical_solved[global_vert_idx_i] += self.raw_analytical_solved[Dirichlet_offset + I] * area_x / 3.0 / area_vert_i
+            elif ti.static(self.shape_func_degree_Dirichlet == 1):
+                for global_vert_i in range(self.num_of_vertices):
+                    if self.get_vertice_type(global_vert_i) == int(VertAttachType.DIRICHLET_TOBESOLVED) or \
+                        self.get_vertice_type(global_vert_i) == int(VertAttachType.BOTH_TOBESOLVED):
+                        local_I = self.map_global_vert_index_to_local_Dirichlet(global_vert_i)
+                        if local_I >= 0:
+                            self.solved[global_vert_i] = self.raw_solved[Dirichlet_offset + local_I]
+                            self.analytical_solved[global_vert_i] = self.raw_analytical_solved[Dirichlet_offset + local_I]
 
     @ti.kernel
     def Jacobian_solver(self) -> float:
@@ -680,24 +834,19 @@ class BEMManager:
         return mat_A_norm_inv
     
     def get_mat_Sio_norm(self, k: float):
-        self._mat_A.fill(0)
-
-        self.matrix_layer_forward(k=k, sqrt_n=self._sqrt_ni)
-        self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=1.0)  # Add P_PLUS_I
-        self.matrix_layer_forward(k=k, sqrt_n=self._sqrt_no)
-        self.assemble_matA(assemble_type=int(AssembleType.ADD_P_MINUS), multiplier=1.0)  # Add P_MINUS_O
-
-        torch_mat_A = self._mat_A.to_torch()
-        torch_mat_A = torch_mat_A[..., 0] + torch_mat_A[..., 1] * 1j
-        mat_A_norm = torch_mat_A.norm(p="nuc")
-
-        return mat_A_norm
+        pass
     
     def run(self):
         self._mat_A.fill(0)
         self._mat_P.fill(0)
 
         self.rhs_constructor.set_boundaries(sqrt_ni=self._sqrt_ni, sqrt_no=self._sqrt_no)
+        torch_Neumann_boundary = self.rhs_constructor._Neumann_boundary.to_torch()
+        print("boundary norm = ", torch_Neumann_boundary.norm())
+        torch_Neumann_boundary = self.rhs_constructor._Dirichlet_boundary.to_torch()
+        print("boundary norm = ", torch_Neumann_boundary.norm())
+        torch_Neumann_boundary = self.rhs_constructor._f_boundary.to_torch()
+        print("boundary norm = ", torch_Neumann_boundary.norm())
         if self._is_transmission > 0:
             # no scope
             self.matrix_layer_forward(k=self._k, sqrt_n=self._sqrt_no)
@@ -706,7 +855,7 @@ class BEMManager:
             self.assemble_rhs()  # 0.5I - M_O
             # ni scope
             self.matrix_layer_forward(k=self._k, sqrt_n=self._sqrt_ni)
-            self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=1.0)  # Reduce P_PLUS_I
+            self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=-1.0)  # Reduce P_PLUS_I
             self._mat_P.fill(0)
             self.assemble_matP(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=1.0)  # ADD P_PLUS_I
         else:
@@ -714,6 +863,10 @@ class BEMManager:
             self.assemble_matA(assemble_type=int(AssembleType.ADD_M), multiplier=-1.0)  # Reduce M
             self.rhs_layer_forward(assemble_type=int(AssembleType.ADD_P_PLUS), k=self._k)
             self.assemble_rhs()  # 0.5I + M
+            torch_rhs = self.rhs_constructor._rhs_vec.to_torch()
+            print("rhs norm = ", torch_rhs.norm())
+            torch_rhs = self._mat_A.to_torch()
+            print("matA norm = ", torch_rhs.norm())
 
         # Solve
         self.solve()
@@ -734,10 +887,10 @@ class BEMManager:
         torch_rhs = warp_tensor(self.rhs.to_torch().to(device))
         
         torch_mat = torch.zeros((self.rhs.shape[0], self._mat_A.shape[1])).to(torch_mat_A.dtype).to(device)
-        torch_mat[0: (self.num_of_Dirichlets + self.num_of_Neumanns), ...] = torch_mat_A
+        torch_mat[0: (self.N_Neumann + self.M_Dirichlet), ...] = torch_mat_A
         if self._is_transmission > 0:
             torch_mat_P = warp_tensor(self._mat_P.to_torch().to(device))
-            torch_mat[(self.num_of_Dirichlets + self.num_of_Neumanns) :, ...] = torch_mat_P
+            torch_mat[(self.N_Neumann + self.M_Dirichlet) :, ...] = torch_mat_P
             
             torch_rhs = (torch_mat.transpose(0, 1).matmul(torch_rhs.unsqueeze(-1))).squeeze(-1)
             torch_mat = torch_mat.transpose(0, 1).matmul(torch_mat)

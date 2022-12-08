@@ -18,17 +18,22 @@ class SingleLayer3d(AbstractSingleLayer):
         self._np_dtype = self._BEM_manager._np_dtype
         self._n = self._BEM_manager._n
 
-        self.num_of_Dirichlets = self._BEM_manager.get_num_of_Dirichlets()
-        self.num_of_Neumanns = self._BEM_manager.get_num_of_Neumanns()
+        self.N_Neumann = self._BEM_manager.get_N_Neumann()
+        self._Q_Neumann = self._BEM_manager.get_shape_func_degree_Neumann()
+        self.M_Dirichlet = self._BEM_manager.get_M_Dirichlet()
+        self._Q_Dirichlet = self._BEM_manager.get_shape_func_degree_Dirichlet()
         self.num_of_vertices = self._BEM_manager.get_num_of_vertices()
         self.num_of_panels = self._BEM_manager.get_num_of_panels()
+        self.num_of_panels_Neumann = self._BEM_manager.get_num_of_panels_Neumann()
+        self.num_of_panels_Dirichlet = self._BEM_manager.get_num_of_panels_Dirichlet()
+
         self._Vmat = ti.Vector.field(self._n, dtype=self._ti_dtype, shape=())
-        assert(self.num_of_Dirichlets + self.num_of_Neumanns > 0)
-        if self.num_of_Dirichlets > 0:
+        assert(self.N_Neumann + self.M_Dirichlet > 0)
+        if self.N_Neumann > 0:
             self._Vmat = ti.Vector.field(
                 self._n,
                 dtype=self._ti_dtype,
-                shape=(self.num_of_Dirichlets, self.num_of_Dirichlets)
+                shape=(self.N_Neumann, self.N_Neumann)
             )
     
     @ti.func
@@ -36,8 +41,15 @@ class SingleLayer3d(AbstractSingleLayer):
         return self._Vmat
 
     def kill(self):
-        self.num_of_Dirichlets = 0
-        self.num_of_Neumanns = 0
+        self.N_Neumann = 0
+        self.M_Dirichlet = 0
+        self._Q_Neumann = -1
+        self._Q_Dirichlet = -1
+        self.num_of_vertices = 0
+        self.num_of_panels = 0
+        self.num_of_panels_Neumann = 0
+        self.num_of_panels_Dirichlet = 0
+
         self._Vmat = None
 
     @ti.func
@@ -387,21 +399,44 @@ class SingleLayer3d(AbstractSingleLayer):
         """
         Compute BIO matix V_mat
         """
-        if ti.static(self.num_of_Dirichlets > 0):
+        if ti.static(self.N_Neumann > 0):
             self._Vmat.fill(0)
 
-            for local_I, local_J in self._Vmat:
-                global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
-                global_j = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_J)
+            basis_func_num_Neumann = self._BEM_manager.get_num_of_basis_functions_from_Q(self._Q_Neumann)
+            basis_func_num_Dirichlet = self._BEM_manager.get_num_of_basis_functions_from_Q(self._Q_Dirichlet)
 
-                # Construct a local matrix
-                panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
-                self._Vmat[local_I, local_J] += self.integrate_on_two_panels(
-                    k=k, sqrt_n=sqrt_n,
-                    triangle_x=global_i, triangle_y=global_j,
-                    basis_function_index_x=-1, basis_function_index_y=-1,
-                    panels_relation=panels_relation
-                )
+            for local_I in range(self.num_of_panels_Neumann):
+                for local_J in range(self.num_of_panels_Neumann):
+                    global_i = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_I)
+                    global_j = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_J)
+
+                    panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
+
+                    for ii in range(basis_func_num_Neumann):
+                        for jj in range(basis_func_num_Neumann):
+                            basis_function_index_x = self._BEM_manager.get_basis_function_index(self._Q_Neumann, ii)
+                            basis_function_index_y = self._BEM_manager.get_basis_function_index(self._Q_Neumann, jj)
+
+                            local_charge_I = self._BEM_manager.proj_from_local_panel_index_to_local_charge_index(
+                                Q_=self._Q_Neumann,
+                                local_panel_index=local_I,
+                                basis_func_index=basis_function_index_x,
+                                panel_type=int(CellFluxType.NEUMANN_TOBESOLVED)
+                            )
+                            local_charge_J = self._BEM_manager.proj_from_local_panel_index_to_local_charge_index(
+                                Q_=self._Q_Neumann,
+                                local_panel_index=local_J,
+                                basis_func_index=basis_function_index_y,
+                                panel_type=int(CellFluxType.NEUMANN_TOBESOLVED)
+                            )
+                            integrand = self.integrate_on_two_panels(
+                                k=k, sqrt_n=sqrt_n,
+                                triangle_x=global_i, triangle_y=global_j,
+                                basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y,
+                                panels_relation=panels_relation
+                            )
+                            if local_charge_I >= 0 and local_charge_J >= 0:
+                                self._Vmat[local_charge_I, local_charge_J] += integrand
     
     @ti.kernel
     def apply_V_dot_panel_boundary(self, k: float, sqrt_n: float, multiplier: float):
@@ -416,26 +451,40 @@ class SingleLayer3d(AbstractSingleLayer):
         where [f] is the input argument [panel_boundary] where an extended Neumann bounary is applied on panels
         and [V] is our own BIO matrix [self._Vmat]
         """
-        num_of_Neumann_panels = self.num_of_panels - self.num_of_Dirichlets
-        if self.num_of_Neumanns == self.num_of_vertices:
-            num_of_Neumann_panels = self.num_of_panels
-        for local_I in range(self.num_of_Dirichlets):
-            for local_J in range(num_of_Neumann_panels):
-                global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
-                global_j = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_J)
+        basis_func_num_Neumann = self._BEM_manager.get_num_of_basis_functions_from_Q(self._Q_Neumann)
+        basis_func_num_Dirichlet = self._BEM_manager.get_num_of_basis_functions_from_Q(self._Q_Dirichlet)
+
+        for local_I in range(self.num_of_panels_Neumann):
+            for local_J in range(self.num_of_panels_Dirichlet):
+                global_i = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_I)
+                global_j = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_J)
 
                 panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
 
-                integrand = self.integrate_on_two_panels(
-                    k=k, sqrt_n=sqrt_n,
-                    triangle_x=global_i, triangle_y=global_j,
-                    basis_function_index_x=-1, basis_function_index_y=-1,
-                    panels_relation=panels_relation
-                )
-                fy = self._BEM_manager.rhs_constructor.get_panel_Neumann_boundary(global_j)
+                for ii in range(basis_func_num_Neumann):
+                    for jj in range(basis_func_num_Neumann):
+                        basis_function_index_x = self._BEM_manager.get_basis_function_index(self._Q_Neumann, ii)
+                        basis_function_index_y = self._BEM_manager.get_basis_function_index(self._Q_Neumann, jj)
 
-                Dirichlet_offset_i = self._BEM_manager.get_Dirichlet_offset_i()
-                if ti.static(self._n == 1):
-                    self._BEM_manager.rhs_constructor.get_rhs_vec()[local_I + Dirichlet_offset_i] += multiplier * integrand * fy
-                elif ti.static(self._n == 2):
-                    self._BEM_manager.rhs_constructor.get_rhs_vec()[local_I + Dirichlet_offset_i] += multiplier * ti.math.cmul(integrand, fy)
+                        local_charge_I = self._BEM_manager.proj_from_local_panel_index_to_local_charge_index(
+                            Q_=self._Q_Neumann,
+                            local_panel_index=local_I,
+                            basis_func_index=basis_function_index_x,
+                            panel_type=int(CellFluxType.NEUMANN_TOBESOLVED)
+                        )
+
+                        integrand = self.integrate_on_two_panels(
+                            k=k, sqrt_n=sqrt_n,
+                            triangle_x=global_i, triangle_y=global_j,
+                            basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y,
+                            panels_relation=panels_relation
+                        )
+
+                        fy = self._BEM_manager.rhs_constructor.get_Neumann_boundary(global_j, basis_function_index_y)
+
+                        Neumann_offset_i = self._BEM_manager.get_Neumann_offset_i()
+                        if local_charge_I >= 0:
+                            if ti.static(self._n == 1):
+                                self._BEM_manager.rhs_constructor.get_rhs_vec()[local_charge_I + Neumann_offset_i] += multiplier * integrand * fy
+                            elif ti.static(self._n == 2):
+                                self._BEM_manager.rhs_constructor.get_rhs_vec()[local_charge_I + Neumann_offset_i] += multiplier * ti.math.cmul(integrand, fy)
