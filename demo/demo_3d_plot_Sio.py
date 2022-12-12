@@ -23,7 +23,7 @@ from src.managers import CoreManager
 ti.init(arch=ti.gpu, kernel_profiler=True)
 
 N = 50
-wave_numbers = [16.0 + i * 1.0 / N for i in range(2 * N)]
+wave_numbers = [4.0 + i * 1.0 / N for i in range(2 * N)]
 A1_inv_norms = [0.0 for i in range(len(wave_numbers))]
 A2_inv_norms = [0.0 for i in range(len(wave_numbers))]
 

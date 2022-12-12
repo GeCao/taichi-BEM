@@ -13,12 +13,16 @@
 
 ### Norm analysis (Still Working on! 👨‍💻)
 * The sample step of wave number is 1/30, which implies for wavenumbers between [16, 18], 60 points are sampled.
-* Precious matters, float64 shows more stability than float32 for operator AI (Somehow not vert obvious for operator AII).
-### The norm of AI
-<img src="demo/A1_plot_Neumann1_Dirichlet1.png" height="256">
+* Precious matters, float64 shows more stability than float32 for operator AI (Somehow not very obvious for operator AII).
+### The norm of AI (Left) and Augmented AI (Right)
+* Although I forgot to put them together into one figure, it is still obviously the right figure (Augmented) averagely 10 times smaller, as well as holding shorted peaks.
 
-### The norm of AII
-<img src="demo/A2_plot_Neumann1_Dirichlet1.png" height="256">
+<img src="demo/A1_plot_Neumann1_Dirichlet1.png" height="192"> <img src="demo/A1_plot_augment_1_1.png" height="192">
+
+### The norm of AII (Left) and Augmented AI (Right)
+* Samilar as above
+
+<img src="demo/A2_plot_Neumann1_Dirichlet1.png" height="192"> <img src="demo/A2_plot_augment_1_1.png" height="192">
 
 ### How to run the code
 
