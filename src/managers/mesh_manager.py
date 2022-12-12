@@ -49,6 +49,18 @@ class MeshManager:
 
         self.shape_func_degree_Neumann = 0
         self.shape_func_degree_Dirichlet = 1
+        Q_Neumann = self._core_manager._simulation_parameters["Q_Neumann"]
+        Q_Dirichlet = self._core_manager._simulation_parameters["Q_Dirichlet"]
+        assert(Q_Neumann == 0 or Q_Neumann == 1)
+        assert(Q_Dirichlet == 0 or Q_Dirichlet == 1)
+        self.shape_func_degree_Neumann = Q_Neumann
+        self.shape_func_degree_Dirichlet = Q_Dirichlet
+
+        self.map_global_Neumann_to_local = ti.field(dtype=ti.i32, shape=())
+        self.map_global_Dirichlet_to_local = ti.field(dtype=ti.i32, shape=())
+
+        self.Dirichlet_index = ti.field(dtype=ti.i32, shape=())
+        self.Neumann_index = ti.field(dtype=ti.i32, shape=())
 
         self.initialized = False
     
@@ -136,10 +148,16 @@ class MeshManager:
         assert(self.num_of_panels == self.panel_types.shape[0])
         assert(self.num_of_vertices == self.vertice_types.shape[0])
 
-        self.shape_func_degree_Neumann = 1
-        self.shape_func_degree_Dirichlet = 1
-        self.M_Dirichlet = self.num_of_vertices
-        self.N_Neumann = self.num_of_vertices
+        if self.shape_func_degree_Neumann == 0:
+            self.N_Neumann = self.num_of_panels
+        elif self.shape_func_degree_Neumann == 1:
+            self.N_Neumann = self.num_of_vertices
+        
+        if self.shape_func_degree_Dirichlet == 0:
+            self.M_Dirichlet = self.num_of_panels
+        elif self.shape_func_degree_Dirichlet == 1:
+            self.M_Dirichlet = self.num_of_vertices
+        
         self.num_of_panels_Dirichlet = self.num_of_panels
         self.num_of_panels_Neumann = self.num_of_panels
 
@@ -155,23 +173,28 @@ class MeshManager:
         self.Neumann_index.from_numpy(np_Neumann_index)
 
         # Use only degree = 1 & Has Neumann to be solved
-        np_map_global_Neumann_to_local = np.array([i for i in range(self.num_of_vertices)], dtype=np.int32)
-        self.map_global_Neumann_to_local = ti.field(dtype=ti.i32, shape=(self.num_of_vertices,))
-        self.map_global_Neumann_to_local.from_numpy(np_map_global_Neumann_to_local)
+        if self.shape_func_degree_Neumann == 1:
+            np_map_global_Neumann_to_local = np.array([i for i in range(self.num_of_vertices)], dtype=np.int32)
+            self.map_global_Neumann_to_local = ti.field(dtype=ti.i32, shape=(self.num_of_vertices,))
+            self.map_global_Neumann_to_local.from_numpy(np_map_global_Neumann_to_local)
 
         # Use only degree = 1 & Has Dirichlet to be solved
-        np_map_global_Dirichlet_to_local = np.array([i for i in range(self.num_of_vertices)], dtype=np.int32)
-        self.map_global_Dirichlet_to_local = ti.field(dtype=ti.i32, shape=(self.num_of_vertices,))
-        self.map_global_Dirichlet_to_local.from_numpy(np_map_global_Dirichlet_to_local)
+        if self.shape_func_degree_Dirichlet == 1:
+            np_map_global_Dirichlet_to_local = np.array([i for i in range(self.num_of_vertices)], dtype=np.int32)
+            self.map_global_Dirichlet_to_local = ti.field(dtype=ti.i32, shape=(self.num_of_vertices,))
+            self.map_global_Dirichlet_to_local.from_numpy(np_map_global_Dirichlet_to_local)
     
     def set_Dirichlet_bvp(self):
         assert(self.num_of_panels == self.panel_types.shape[0])
         assert(self.num_of_vertices == self.vertice_types.shape[0])
 
-        self.shape_func_degree_Neumann = 0
-        self.shape_func_degree_Dirichlet = 1
-        self.N_Neumann = self.num_of_panels
+        if self.shape_func_degree_Neumann == 0:
+            self.N_Neumann = self.num_of_panels
+        elif self.shape_func_degree_Neumann == 1:
+            self.N_Neumann = self.num_of_vertices
+        
         self.M_Dirichlet = 0
+        
         self.num_of_panels_Dirichlet = 0
         self.num_of_panels_Neumann = self.num_of_panels
 
@@ -196,10 +219,12 @@ class MeshManager:
         assert(self.num_of_panels == self.panel_types.shape[0])
         assert(self.num_of_vertices == self.vertice_types.shape[0])
 
-        self.shape_func_degree_Neumann = 0
-        self.shape_func_degree_Dirichlet = 1
         self.N_Neumann = 0
-        self.M_Dirichlet = self.num_of_vertices
+        if self.shape_func_degree_Dirichlet == 0:
+            self.M_Dirichlet = self.num_of_panels
+        elif self.shape_func_degree_Dirichlet == 1:
+            self.M_Dirichlet = self.num_of_vertices
+        
         self.num_of_panels_Dirichlet = self.num_of_panels
         self.num_of_panels_Neumann = 0
 
@@ -228,9 +253,8 @@ class MeshManager:
         assert(self.num_of_panels == self.panel_types.shape[0])
         assert(self.num_of_vertices == self.vertice_types.shape[0])
 
-        self.num_of_Dirichlets = 0
-        self.num_of_Neumanns = 0
-        raise NotImplementedError("Not implemented ")
+        self.N_Neumann = 0
+        self.M_Dirichlet = 0
 
         np_panel_types = np.array(
             [0 for i in range(self.num_of_panels)], dtype=np.int32
@@ -241,6 +265,12 @@ class MeshManager:
         np_map_global_Neumann_to_local = np.array(
             [-1 for i in range(self.num_of_vertices)], dtype=np.int32
         )
+        np_map_global_Dirichlet_to_local = np.array(
+            [-1 for i in range(self.num_of_vertices)], dtype=np.int32
+        )
+
+        num_of_Dirichlet_panels = 0
+        num_of_Neumann_panels = 0
         for i in range(self.num_of_panels):
             x = 0.0
             for j in range(self._dim):
@@ -250,39 +280,65 @@ class MeshManager:
             
             x /= self._dim
             if x > 0:
-                self.num_of_Dirichlets += 1
-                np_panel_types[i] = int(CellFluxType.TOBESOLVED)
+                num_of_Neumann_panels += 1
+                np_panel_types[i] = int(CellFluxType.NEUMANN_TOBESOLVED)
             else:
-                np_panel_types[i] = int(CellFluxType.NEUMANN_KNOWN)
+                num_of_Dirichlet_panels += 1
+                np_panel_types[i] = int(CellFluxType.DIRICHLET_TOBESOLVED)
         
+        if self.shape_func_degree_Neumann == 0:
+            self.N_Neumann = num_of_Neumann_panels
+        
+        if self.shape_func_degree_Dirichlet == 0:
+            self.M_Dirichlet = num_of_Dirichlet_panels
+        
+        num_of_Neumann_vertices = 0
+        num_of_Dirichlet_vertices = 0
         for i in range(self.num_of_panels):
-            if np_panel_types[i] == int(CellFluxType.TOBESOLVED):
-                for j in range(self._dim):
-                    vert_idx = self.panels[self._dim * i + j]
-                    np_vertice_types[vert_idx] = int(VertAttachType.DIRICHLET_KNOWN)
-    
-        for i in range(self.num_of_panels):
-            if np_panel_types[i] == int(CellFluxType.NEUMANN_KNOWN):
+            if np_panel_types[i] == int(CellFluxType.NEUMANN_TOBESOLVED):
                 for j in range(self._dim):
                     vert_idx = self.panels[self._dim * i + j]
                     if np_vertice_types[vert_idx] == -1:
-                        np_vertice_types[vert_idx] = int(VertAttachType.TOBESOLVED)
-                        np_map_global_Neumann_to_local[vert_idx] = self.num_of_Neumanns
-                        self.num_of_Neumanns += 1
+                        np_vertice_types[vert_idx] = int(VertAttachType.NEUMANN_TOBESOLVED)
+                        np_map_global_Neumann_to_local[vert_idx] = num_of_Neumann_vertices
+                        num_of_Neumann_vertices += 1
+    
+        for i in range(self.num_of_panels):
+            if np_panel_types[i] == int(CellFluxType.DIRICHLET_TOBESOLVED):
+                for j in range(self._dim):
+                    vert_idx = self.panels[self._dim * i + j]
+                    if np_vertice_types[vert_idx] == -1:
+                        np_vertice_types[vert_idx] = int(VertAttachType.DIRICHLET_TOBESOLVED)
+                        np_map_global_Dirichlet_to_local[vert_idx] = num_of_Dirichlet_vertices
+                        num_of_Dirichlet_vertices += 1
+        
+        if self.shape_func_degree_Neumann == 1:
+            self.N_Neumann = num_of_Neumann_vertices
+        
+        if self.shape_func_degree_Dirichlet == 1:
+            self.M_Dirichlet = num_of_Dirichlet_vertices
+        
+        assert(num_of_Dirichlet_vertices + num_of_Neumann_vertices == self.num_of_vertices)
+
+        self.num_of_panels_Dirichlet = num_of_Dirichlet_panels
+        self.num_of_panels_Neumann = num_of_Neumann_panels
         
         self.panel_types.from_numpy(np_panel_types)
         self.vertice_types.from_numpy(np_vertice_types)
 
         np_hlp_indices = np.array([i for i in range(self.num_of_panels)], dtype=np.int32)
-        np_Dirichlet_index = np_hlp_indices[np_panel_types == int(CellFluxType.TOBESOLVED)]
-        np_Neumann_index = np_hlp_indices[np_panel_types == int(CellFluxType.NEUMANN_KNOWN)]
+        np_Dirichlet_index = np_hlp_indices[np_panel_types == int(CellFluxType.DIRICHLET_TOBESOLVED)]
+        np_Neumann_index = np_hlp_indices[np_panel_types == int(CellFluxType.NEUMANN_TOBESOLVED)]
 
-        self.Dirichlet_index = ti.field(dtype=ti.i32, shape=(self.num_of_Dirichlets,))
-        self.Neumann_index = ti.field(dtype=ti.i32, shape=(self.num_of_panels - self.num_of_Dirichlets,))
-        self.map_global_Neumann_to_local = ti.field(dtype=ti.i32, shape=(self.num_of_vertices,))
+        self.Dirichlet_index = ti.field(dtype=ti.i32, shape=(num_of_Dirichlet_panels,))
+        self.Neumann_index = ti.field(dtype=ti.i32, shape=(num_of_Neumann_panels,))
         self.Dirichlet_index.from_numpy(np_Dirichlet_index)
         self.Neumann_index.from_numpy(np_Neumann_index)
+
+        self.map_global_Neumann_to_local = ti.field(dtype=ti.i32, shape=(self.num_of_vertices,))
         self.map_global_Neumann_to_local.from_numpy(np_map_global_Neumann_to_local)
+        self.map_global_Dirichlet_to_local = ti.field(dtype=ti.i32, shape=(self.num_of_vertices,))
+        self.map_global_Dirichlet_to_local.from_numpy(np_map_global_Dirichlet_to_local)
 
     def get_num_of_vertices(self):
         return self.num_of_vertices
@@ -325,7 +381,7 @@ class MeshManager:
     @ti.func
     def map_global_vert_index_to_local_Dirichlet(self, i):
         result = -1
-        if ti.static(self.M_Dirichlet > 0):
+        if ti.static(self.M_Dirichlet > 0 and self.shape_func_degree_Dirichlet == 1):
             if self.vertice_types[i] == int(VertAttachType.DIRICHLET_TOBESOLVED) or \
                 self.vertice_types[i] == int(VertAttachType.BOTH_TOBESOLVED):
                 result = self.map_global_Dirichlet_to_local[i]
@@ -334,7 +390,7 @@ class MeshManager:
     @ti.func
     def map_global_vert_index_to_local_Neumann(self, i):
         result = -1
-        if ti.static(self.N_Neumann > 0):
+        if ti.static(self.N_Neumann > 0 and self.shape_func_degree_Neumann == 1):
             if self.vertice_types[i] == int(VertAttachType.NEUMANN_TOBESOLVED) or \
                 self.vertice_types[i] == int(VertAttachType.BOTH_TOBESOLVED):
                 result = self.map_global_Neumann_to_local[i]

@@ -187,7 +187,7 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
         surface_grad_i_y = self.surface_grad(y1, y2, y3, phi1_y, phi2_y, phi3_y, normal_y, area_y)
         curl_i_y = ti.math.cross(normal_y, surface_grad_i_y)
 
-        curl_phix_dot_curl_phiy = curl_i_x.dot(curl_i_y)
+        curl_phix_dot_curl_phiy = ti.math.dot(curl_i_x, curl_i_y)
 
         GaussQR2 = self._GaussQR * self._GaussQR
         GaussQR4 = GaussQR2 * GaussQR2
@@ -230,8 +230,8 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
                 phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
 
                 integrand += (
-                    self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy, k, sqrt_n)
-                ) * weight * jacobian
+                    self.G(x, y, k, sqrt_n)
+                ) * weight * jacobian * curl_phix_dot_curl_phiy
                 integrand += k2 * (
                     -self.G(x, y, k, sqrt_n) * phix * phiy * ti.math.dot(normal_x, normal_y)
                 ) * weight * jacobian
@@ -259,8 +259,8 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
 
                     # D1, D3, D5
                     integrand += (
-                        self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy, k, sqrt_n)
-                    ) * weight * jacobian
+                        self.G(x, y, k, sqrt_n)
+                    ) * weight * jacobian * curl_phix_dot_curl_phiy
                     integrand += k2 * (
                         -self.G(x, y, k, sqrt_n) * phix * phiy * ti.math.dot(normal_x, normal_y)
                     ) * weight * jacobian
@@ -279,8 +279,8 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
 
                     # D2, D4, D6
                     integrand += (
-                        self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy, k, sqrt_n)
-                    ) * weight * jacobian
+                        self.G(x, y, k, sqrt_n)
+                    ) * weight * jacobian * curl_phix_dot_curl_phiy
                     integrand += k2 * (
                         -self.G(x, y, k, sqrt_n) * phix * phiy * ti.math.dot(normal_x, normal_y)
                     ) * weight * jacobian
@@ -303,8 +303,8 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
 
                 jacobian = xsi * xsi * xsi * eta2
                 integrand += (
-                    self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy, k, sqrt_n)
-                ) * weight * jacobian
+                    self.G(x, y, k, sqrt_n)
+                ) * weight * jacobian * curl_phix_dot_curl_phiy
                 integrand += k2 * (
                     -self.G(x, y, k, sqrt_n) * phix * phiy * ti.math.dot(normal_x, normal_y)
                 ) * weight * jacobian
@@ -326,8 +326,8 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
 
                 jacobian = xsi * xsi * xsi * eta2
                 integrand += (
-                    self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy, k, sqrt_n)
-                ) * weight * jacobian
+                    self.G(x, y, k, sqrt_n)
+                ) * weight * jacobian * curl_phix_dot_curl_phiy
                 integrand += k2 * (
                     -self.G(x, y, k, sqrt_n) * phix * phiy * ti.math.dot(normal_x, normal_y)
                 ) * weight * jacobian
@@ -350,8 +350,8 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1
                 integrand += (
-                    self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy, k, sqrt_n)
-                ) * weight * jacobian
+                    self.G(x, y, k, sqrt_n)
+                ) * weight * jacobian * curl_phix_dot_curl_phiy
                 integrand += k2 * (
                     -self.G(x, y, k, sqrt_n) * phix * phiy * ti.math.dot(normal_x, normal_y)
                 ) * weight * jacobian
@@ -373,8 +373,8 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy, k, sqrt_n)
-                ) * weight * jacobian
+                    self.G(x, y, k, sqrt_n)
+                ) * weight * jacobian * curl_phix_dot_curl_phiy
                 integrand += k2 * (
                     -self.G(x, y, k, sqrt_n) * phix * phiy * ti.math.dot(normal_x, normal_y)
                 ) * weight * jacobian
@@ -396,8 +396,8 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy, k, sqrt_n)
-                ) * weight * jacobian
+                    self.G(x, y, k, sqrt_n)
+                ) * weight * jacobian * curl_phix_dot_curl_phiy
                 integrand += k2 * (
                     -self.G(x, y, k, sqrt_n) * phix * phiy * ti.math.dot(normal_x, normal_y)
                 ) * weight * jacobian
@@ -420,8 +420,8 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy, k, sqrt_n)
-                ) * weight * jacobian
+                    self.G(x, y, k, sqrt_n)
+                ) * weight * jacobian * curl_phix_dot_curl_phiy
                 integrand += k2 * (
                     -self.G(x, y, k, sqrt_n) * phix * phiy * ti.math.dot(normal_x, normal_y)
                 ) * weight * jacobian
@@ -444,8 +444,8 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
                 
                 jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
                 integrand += (
-                    self.grad2_G_xy(x, y, curl_phix_dot_curl_phiy, k, sqrt_n)
-                ) * weight * jacobian
+                    self.G(x, y, k, sqrt_n)
+                ) * weight * jacobian * curl_phix_dot_curl_phiy
                 integrand += k2 * (
                     -self.G(x, y, k, sqrt_n) * phix * phiy * ti.math.dot(normal_x, normal_y)
                 ) * weight * jacobian

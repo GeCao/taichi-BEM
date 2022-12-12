@@ -12,8 +12,13 @@
 <img src="demo/HelmholtzTransmission_solved_Full.png" height="270">
 
 ### Norm analysis (Still Working on! 👨‍💻)
-### left: Augmented A=[A; Pi+]---------right: Non-augmented A = A
-<img src="demo/augmented_plot.png" height="192"> <img src="demo/non_augmented_plot.png" height="192">
+* The sample step of wave number is 1/30, which implies for wavenumbers between [16, 18], 60 points are sampled.
+* Precious matters, float64 shows more stability than float32 for operator AI (Somehow not vert obvious for operator AII).
+### The norm of AI
+<img src="demo/A1_plot_Neumann1_Dirichlet1.png" height="256">
+
+### The norm of AII
+<img src="demo/A2_plot_Neumann1_Dirichlet1.png" height="256">
 
 ### How to run the code
 
@@ -31,6 +36,7 @@ python demo_3d_Helmholtz_Transmission.py --boundary Full --k 5
   - Dirichlet: If You want to set Dirichlet boundary and solve Neumann charges, pick this.
   - Neumann: If You want to set Neumann boundary and solve Dirichlet charges, pick this.
   - Mix: If You want to set Dirichlet boundary and solve Neumann charges for y > 0, and otherwise for y <= 0, pick this. If you want to self define your design of Dirichlet region and Neumann region, go to file [mesh_manager.py](src/managers/mesh_manager.py) and reach function [set_mixed_bvp](src/managers/mesh_manager.py), you might handle it with your own preference.
+  - Full: This is only useful for Transmission problem, Both Neumann/Dirichlet boundary will be applied, and the corresponding boundary will be solved for interior.
 - kernel := ['Laplace', 'Helmholtz']
   - Laplace: Solve Laplace equation
   - Helmholtz: Solve Helmholtz equation

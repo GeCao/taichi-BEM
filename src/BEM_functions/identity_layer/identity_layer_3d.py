@@ -212,8 +212,8 @@ class IdentityLayer3d(AbstractIdentityLayer):
                         )
 
                         if local_charge_I >= 0 and local_charge_J >= 0:
-                            self._BEM_manager.get_mat_A()[local_charge_I + self._Dirichlet_offset_i, local_charge_J + self._Neumann_offset_j] += mutiplier * integrand
-                            self._BEM_manager.get_mat_A()[local_charge_J + self._Neumann_offset_i, local_charge_I + self._Dirichlet_offset_j] += mutiplier * integrand
+                            self._BEM_manager.get_mat_A()[local_charge_I + self._Neumann_offset_i, local_charge_J + self._Dirichlet_offset_j] += mutiplier * integrand
+                            self._BEM_manager.get_mat_A()[local_charge_J + self._Dirichlet_offset_i, local_charge_I + self._Neumann_offset_j] += mutiplier * integrand
 
     
     @ti.kernel
@@ -253,5 +253,5 @@ class IdentityLayer3d(AbstractIdentityLayer):
                         )
 
                         if local_charge_I >= 0 and local_charge_J >= 0:
-                            self._BEM_manager.get_mat_P()[local_charge_I + self._Dirichlet_offset_i, local_charge_J + self._Neumann_offset_j] += mutiplier * integrand
-                            self._BEM_manager.get_mat_P()[local_charge_J + self._Neumann_offset_i, local_charge_I + self._Dirichlet_offset_j] += mutiplier * integrand
+                            self._BEM_manager.get_mat_P()[local_charge_I + self._Neumann_offset_i, local_charge_J + self._Dirichlet_offset_j] += mutiplier * integrand
+                            self._BEM_manager.get_mat_P()[local_charge_J + self._Dirichlet_offset_i, local_charge_I + self._Neumann_offset_j] += mutiplier * integrand

@@ -55,151 +55,100 @@ class RHSConstructor3d(AbstractRHSConstructor):
 
         Dirichlet_offset_j = self._BEM_manager.get_Dirichlet_offset_j()
         Neumann_offset_j = self._BEM_manager.get_Neumann_offset_j()
-        basis_func_num_Neumann = self._BEM_manager.get_num_of_basis_functions_from_Q(self._Q_Neumann)
-        basis_func_num_Dirichlet = self._BEM_manager.get_num_of_basis_functions_from_Q(self._Q_Dirichlet)
         if ti.static(self._BEM_manager._is_transmission > 0):
-            for local_I in range(self.num_of_panels_Neumann):
-                # Solve Neumann
-                global_i = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_I)
-                for ii in range(basis_func_num_Neumann):
-                    basis_function_index_x = self._BEM_manager.get_basis_function_index(self._Q_Neumann, ii)
-
-                    local_charge_I = self._BEM_manager.proj_from_local_panel_index_to_local_charge_index(
-                        Q_=self._Q_Neumann,
-                        local_panel_index=local_I,
-                        basis_func_index=basis_function_index_x,
-                        panel_type=int(CellFluxType.NEUMANN_TOBESOLVED)
+            if ti.static(self._Q_Neumann == 0):
+                for local_I in range(self.num_of_panels_Neumann):
+                    # Solve Neumann, apply Neumann boundary
+                    global_i = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_I)
+                    # Constant
+                    x1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 0)
+                    x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 1)
+                    x3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 2)
+                    x = (x1 + x2 + x3) / 3.0
+                    normal_x = self._BEM_manager.get_panel_normal(global_i)
+                    self._Neumann_boundary[global_i] += self.analytical_function_Neumann(x, normal_x, sqrt_ni)
+                    self._f_boundary[Neumann_offset_j + local_I] += (
+                        self.analytical_function_Neumann(x, normal_x, sqrt_ni) - 0 * self.analytical_function_Neumann(x, normal_x, sqrt_no)
                     )
-                    global_charge_i = self._BEM_manager.proj_from_local_panel_index_to_global_charge_index(
-                        Q_=self._Q_Neumann,
-                        local_panel_index=local_I,
-                        basis_func_index=basis_function_index_x,
-                        panel_type=int(CellFluxType.NEUMANN_TOBESOLVED)
-                    )
-                    if basis_function_index_x == -1:
-                        # Constant
-                        x1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 0)
-                        x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 1)
-                        x3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 2)
-                        x = (x1 + x2 + x3) / 3.0
-                        normal_x = self._BEM_manager.get_panel_normal(global_i)
-                        self._Neumann_boundary[global_charge_i] += self.analytical_function_Neumann(x, normal_x, sqrt_ni)
-                        fx = (
-                            self.analytical_function_Neumann(x, normal_x, sqrt_ni) - self.analytical_function_Neumann(x, normal_x, sqrt_no)
-                        )
-                        self._f_boundary[Neumann_offset_j + local_charge_I] += fx
-                    else:
-                        # Linear
-                        global_vert_idx_i = self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_i + ii)
+            elif ti.static(self._Q_Neumann == 1):
+                for global_vert_idx_i in range(self.num_of_vertices):
+                    # Solve Neumann, apply Neumann boundary
+                    if self._BEM_manager.get_vertice_type(global_vert_idx_i) == int(VertAttachType.BOTH_TOBESOLVED) or \
+                        self._BEM_manager.get_vertice_type(global_vert_idx_i) == int(VertAttachType.NEUMANN_TOBESOLVED):
+                        local_vert_idx_i = self._BEM_manager.map_global_vert_index_to_local_Neumann(global_vert_idx_i)
                         x = self._BEM_manager.get_vertice(global_vert_idx_i)
                         normal_x = self._BEM_manager.get_vert_normal(global_vert_idx_i)
-                        area_x = self._BEM_manager.get_panel_area(global_i)
-                        vert_area_i = self._BEM_manager.get_vert_area(global_vert_idx_i)
-                        self._Neumann_boundary[global_charge_i] += self.analytical_function_Neumann(x, normal_x, sqrt_ni) * (area_x / 3.0) / vert_area_i
-                        fx = (
-                            self.analytical_function_Neumann(x, normal_x, sqrt_ni) - self.analytical_function_Neumann(x, normal_x, sqrt_no)
+                        self._Neumann_boundary[global_vert_idx_i] += self.analytical_function_Neumann(x, normal_x, sqrt_ni)
+                        self._f_boundary[Neumann_offset_j + local_vert_idx_i] += (
+                            self.analytical_function_Neumann(x, normal_x, sqrt_ni) - 0 * self.analytical_function_Neumann(x, normal_x, sqrt_no)
                         )
-                        self._f_boundary[Neumann_offset_j + local_charge_I] += fx * (area_x / 3.0) / vert_area_i
-            for local_I in range(self.num_of_panels_Dirichlet):
-                # Solve Dirichlet
-                global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
-                for ii in range(basis_func_num_Dirichlet):
-                    basis_function_index_x = self._BEM_manager.get_basis_function_index(self._Q_Dirichlet, ii)
-
-                    local_charge_I = self._BEM_manager.proj_from_local_panel_index_to_local_charge_index(
-                        Q_=self._Q_Dirichlet,
-                        local_panel_index=local_I,
-                        basis_func_index=basis_function_index_x,
-                        panel_type=int(CellFluxType.DIRICHLET_TOBESOLVED)
+            
+            if ti.static(self._Q_Dirichlet == 0):
+                for local_I in range(self.num_of_panels_Dirichlet):
+                    # Solve Dirichlet, apply Dirichlet boundary
+                    global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
+                    # Constant
+                    x1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 0)
+                    x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 1)
+                    x3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 2)
+                    x = (x1 + x2 + x3) / 3.0
+                    normal_x = self._BEM_manager.get_panel_normal(global_i)
+                    self._Dirichlet_boundary[global_i] += self.analytical_function_Dirichlet(x, sqrt_ni)
+                    self._f_boundary[Dirichlet_offset_j + local_I] += (
+                        self.analytical_function_Dirichlet(x, sqrt_ni) - 0 * self.analytical_function_Dirichlet(x, sqrt_no)
                     )
-                    global_charge_i = self._BEM_manager.proj_from_local_panel_index_to_global_charge_index(
-                        Q_=self._Q_Dirichlet,
-                        local_panel_index=local_I,
-                        basis_func_index=basis_function_index_x,
-                        panel_type=int(CellFluxType.DIRICHLET_TOBESOLVED)
-                    )
-                    if basis_function_index_x == -1:
-                        # Constant
-                        x1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 0)
-                        x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 1)
-                        x3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 2)
-                        x = (x1 + x2 + x3) / 3.0
-                        normal_x = self._BEM_manager.get_panel_normal(global_i)
-                        self._Dirichlet_boundary[global_charge_i] += self.analytical_function_Dirichlet(x, sqrt_ni)
-                        fx = (
-                            self.analytical_function_Dirichlet(x, sqrt_ni) - self.analytical_function_Dirichlet(x, sqrt_no)
-                        )
-                        self._f_boundary[Dirichlet_offset_j + local_charge_I] += fx
-                    else:
-                        # Linear
-                        global_vert_idx_i = self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_i + ii)
+            elif ti.static(self._Q_Dirichlet == 1):
+                for global_vert_idx_i in range(self.num_of_vertices):
+                    # Solve Dirichlet, apply Dirichlet boundary
+                    if self._BEM_manager.get_vertice_type(global_vert_idx_i) == int(VertAttachType.BOTH_TOBESOLVED) or \
+                        self._BEM_manager.get_vertice_type(global_vert_idx_i) == int(VertAttachType.DIRICHLET_TOBESOLVED):
+                        local_vert_idx_i = self._BEM_manager.map_global_vert_index_to_local_Dirichlet(global_vert_idx_i)
                         x = self._BEM_manager.get_vertice(global_vert_idx_i)
                         normal_x = self._BEM_manager.get_vert_normal(global_vert_idx_i)
-                        area_x = self._BEM_manager.get_panel_area(global_i)
-                        vert_area_i = self._BEM_manager.get_vert_area(global_vert_idx_i)
-                        self._Dirichlet_boundary[global_charge_i] += self.analytical_function_Dirichlet(x, sqrt_ni) * (area_x / 3.0) / vert_area_i
-                        fx = (
-                            self.analytical_function_Dirichlet(x, sqrt_ni) - self.analytical_function_Dirichlet(x, sqrt_no)
+                        self._Dirichlet_boundary[global_vert_idx_i] += self.analytical_function_Dirichlet(x, sqrt_ni)
+                        self._f_boundary[Dirichlet_offset_j + local_vert_idx_i] += (
+                            self.analytical_function_Dirichlet(x, sqrt_ni) - 0 * self.analytical_function_Dirichlet(x, sqrt_no)
                         )
-                        self._f_boundary[Dirichlet_offset_j + local_charge_I] += fx * (area_x / 3.0) / vert_area_i
         else:
-            for local_I in range(self.num_of_panels_Dirichlet):
-                # Solve Dirichlet
-                global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
-                for ii in range(basis_func_num_Neumann):
-                    basis_function_index_x = self._BEM_manager.get_basis_function_index(self._Q_Neumann, ii)
-
-                    global_charge_i = self._BEM_manager.proj_from_local_panel_index_to_global_charge_index(
-                        Q_=self._Q_Neumann,
-                        local_panel_index=local_I,
-                        basis_func_index=basis_function_index_x,
-                        panel_type=int(CellFluxType.DIRICHLET_TOBESOLVED)
-                    )
-                    if basis_function_index_x == -1:
-                        # Constant
-                        x1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 0)
-                        x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 1)
-                        x3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 2)
-                        x = (x1 + x2 + x3) / 3.0
-                        normal_x = self._BEM_manager.get_panel_normal(global_i)
-                        self._Neumann_boundary[global_charge_i] += self.analytical_function_Neumann(x, normal_x)
-                    else:
-                        # Linear
-                        global_vert_idx_i = self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_i + ii)
+            if ti.static(self._Q_Neumann == 0):
+                for local_I in range(self.num_of_panels_Dirichlet):
+                    # Solve Dirichlet
+                    global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
+                    # Constant
+                    x1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 0)
+                    x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 1)
+                    x3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 2)
+                    x = (x1 + x2 + x3) / 3.0
+                    normal_x = self._BEM_manager.get_panel_normal(global_i)
+                    fx = self.analytical_function_Neumann(x, normal_x)
+                    self._Neumann_boundary[global_i] += fx
+            elif ti.static(self._Q_Neumann == 1):
+                for global_vert_idx_i in range(self.num_of_vertices):
+                    if self._BEM_manager.get_vertice_type(global_vert_idx_i) == int(VertAttachType.DIRICHLET_TOBESOLVED):
                         x = self._BEM_manager.get_vertice(global_vert_idx_i)
                         normal_x = self._BEM_manager.get_vert_normal(global_vert_idx_i)
-                        area_x = self._BEM_manager.get_panel_area(global_i)
-                        vert_area_i = self._BEM_manager.get_vert_area(global_vert_idx_i)
-                        self._Neumann_boundary[global_charge_i] += self.analytical_function_Neumann(x, normal_x) * (area_x / 3.0) / vert_area_i
+                        fx = self.analytical_function_Neumann(x, normal_x)
+                        self._Neumann_boundary[global_vert_idx_i] += fx
         
-            for local_I in range(self.num_of_panels_Neumann):
-                # Solve Neumann
-                global_i = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_I)
-                for ii in range(basis_func_num_Dirichlet):
-                    basis_function_index_x = self._BEM_manager.get_basis_function_index(self._Q_Dirichlet, ii)
-
-                    global_charge_i = self._BEM_manager.proj_from_local_panel_index_to_global_charge_index(
-                        Q_=self._Q_Dirichlet,
-                        local_panel_index=local_I,
-                        basis_func_index=basis_function_index_x,
-                        panel_type=int(CellFluxType.NEUMANN_TOBESOLVED)
-                    )
-                    if basis_function_index_x == -1:
-                        # Constant
-                        x1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 0)
-                        x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 1)
-                        x3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 2)
-                        x = (x1 + x2 + x3) / 3.0
-                        normal_x = self._BEM_manager.get_panel_normal(global_i)
-                        self._Dirichlet_boundary[global_charge_i] += self.analytical_function_Dirichlet(x)
-                    else:
-                        # Linear
-                        global_vert_idx_i = self._BEM_manager.get_vertice_index_from_flat_panel_index(self._dim * global_i + ii)
+            if ti.static(self._Q_Dirichlet == 0):
+                for local_I in range(self.num_of_panels_Neumann):
+                    # Solve Neumann
+                    global_i = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_I)
+                    # Constant
+                    x1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 0)
+                    x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 1)
+                    x3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 2)
+                    x = (x1 + x2 + x3) / 3.0
+                    normal_x = self._BEM_manager.get_panel_normal(global_i)
+                    gx = self.analytical_function_Dirichlet(x)
+                    self._Dirichlet_boundary[global_i] += gx
+            elif ti.static(self._Q_Dirichlet == 1):
+                for global_vert_idx_i in range(self.num_of_vertices):
+                    if self._BEM_manager.get_vertice_type(global_vert_idx_i) == int(VertAttachType.NEUMANN_TOBESOLVED):
                         x = self._BEM_manager.get_vertice(global_vert_idx_i)
                         normal_x = self._BEM_manager.get_vert_normal(global_vert_idx_i)
-                        area_x = self._BEM_manager.get_panel_area(global_i)
-                        vert_area_i = self._BEM_manager.get_vert_area(global_vert_idx_i)
-                        self._Dirichlet_boundary[global_charge_i] += self.analytical_function_Dirichlet(x) * (area_x / 3.0) / vert_area_i
+                        gx = self.analytical_function_Dirichlet(x)
+                        self._Dirichlet_boundary[global_vert_idx_i] += gx
     
     @ti.func
     def get_rhs_vec(self):

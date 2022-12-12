@@ -30,6 +30,9 @@ def main(args):
         'k': args.k,
         'kernel': args.kernel,
         'boundary': args.boundary,
+        'show': args.show,
+        'Q_Neumann': args.Q_Neumann,
+        'Q_Dirichlet': args.Q_Dirichlet,
         'log_to_disk': args.log_to_disk,
         'make_video': args.make_video,
         'show_wireframe': args.show_wireframe,
@@ -43,17 +46,17 @@ def main(args):
     # With u(x) = (1 + x1)exp(2π x2)cos(2π x3) as the analytical result.
     @ti.func
     def analytical_function_Dirichlet(x):
-        # return ti.Vector([1 + x[1]])
-        return ti.Vector([(1 + x[0]) * ti.math.exp(2.0 * ti.math.pi * x[1]) * ti.math.cos(2.0 * ti.math.pi * x[2])])
+        return ti.Vector([1 + x.y - x.x - x.z])
+        # return ti.Vector([(1 + x[0]) * ti.math.exp(2.0 * ti.math.pi * x[1]) * ti.math.cos(2.0 * ti.math.pi * x[2])])
     
     @ti.func
     def analytical_function_Neumann(x, normal_x):
-        grad_u = ti.Vector(
-            [ti.math.exp(2.0 * ti.math.pi * x[1]) * ti.math.cos(2.0 * ti.math.pi * x[2]),
-             2.0 * ti.math.pi * (1 + x[0]) * ti.math.exp(2.0 * ti.math.pi * x[1]) * ti.math.cos(2.0 * ti.math.pi * x[2]),
-             -2.0 * ti.math.pi * (1 + x[0]) * ti.math.exp(2.0 * ti.math.pi * x[1]) * ti.math.sin(2.0 * ti.math.pi * x[2])]
-        )
-        # grad_u = ti.Vector([0.0, 1.0, 0.0])
+        # grad_u = ti.Vector(
+        #     [ti.math.exp(2.0 * ti.math.pi * x[1]) * ti.math.cos(2.0 * ti.math.pi * x[2]),
+        #      2.0 * ti.math.pi * (1 + x[0]) * ti.math.exp(2.0 * ti.math.pi * x[1]) * ti.math.cos(2.0 * ti.math.pi * x[2]),
+        #      -2.0 * ti.math.pi * (1 + x[0]) * ti.math.exp(2.0 * ti.math.pi * x[1]) * ti.math.sin(2.0 * ti.math.pi * x[2])]
+        # )
+        grad_u = ti.Vector([-1.0, 1.0, -1.0])
         return ti.Vector([grad_u.dot(normal_x)])
     
     core_manager.initialization(
@@ -126,6 +129,30 @@ if __name__ == '__main__':
         default="Dirichlet",
         choices=["Dirichlet", "Neumann", "Mix"],
         help="Do we need a video for visualization?",
+    )
+
+    parser.add_argument(
+        "--show",
+        type=str,
+        default="Default",
+        choices=["Default", "Neumann", "Dirichlet"],
+        help="Usually we apply Neumann(Dirichlet) boundary and solve Dirichlet(Neumann), "
+             "we just need to show what we solved in this (Default) case."
+             "However, sometimes we solve both, in this case, you need to indicate one for visualization",
+    )
+
+    parser.add_argument(
+        "--Q_Neumann",
+        type=int,
+        default=1,
+        help="The degree of Neumann attached shape function",
+    )
+
+    parser.add_argument(
+        "--Q_Dirichlet",
+        type=int,
+        default=1,
+        help="The degree of Dirichlet attached shape function",
     )
 
     parser.add_argument(

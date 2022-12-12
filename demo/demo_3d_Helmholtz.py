@@ -30,6 +30,9 @@ def main(args):
         'k': args.k,
         'kernel': args.kernel,
         'boundary': args.boundary,
+        'show': args.show,
+        'Q_Neumann': args.Q_Neumann,
+        'Q_Dirichlet': args.Q_Dirichlet,
         'log_to_disk': args.log_to_disk,
         'make_video': args.make_video,
         'show_wireframe': args.show_wireframe,
@@ -128,6 +131,30 @@ if __name__ == '__main__':
         default="Dirichlet",
         choices=["Dirichlet", "Neumann", "Mix"],
         help="Do we need a video for visualization?",
+    )
+
+    parser.add_argument(
+        "--show",
+        type=str,
+        default="Default",
+        choices=["Default", "Neumann", "Dirichlet"],
+        help="Usually we apply Neumann(Dirichlet) boundary and solve Dirichlet(Neumann), "
+             "we just need to show what we solved in this (Default) case."
+             "However, sometimes we solve both, in this case, you need to indicate one for visualization",
+    )
+
+    parser.add_argument(
+        "--Q_Neumann",
+        type=int,
+        default=0,
+        help="The degree of Neumann attached shape function",
+    )
+
+    parser.add_argument(
+        "--Q_Dirichlet",
+        type=int,
+        default=1,
+        help="The degree of Dirichlet attached shape function",
     )
 
     parser.add_argument(

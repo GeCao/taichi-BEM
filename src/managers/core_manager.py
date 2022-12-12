@@ -19,9 +19,10 @@ class CoreManager:
         print("The data path of our project: ", self.data_path)
 
         self._simulation_parameters = simulation_parameters
-        if self._simulation_parameters['kernel'] != "Helmholtz":
+        if "Helmholtz" not in self._simulation_parameters['kernel']:
             self._simulation_parameters['k'] = 0
-        self._is_transmission = 1 if "Full" in self._simulation_parameters['boundary'] or "transmission" in self._simulation_parameters['kernel'] else 0
+        
+        self._is_transmission = 1 if "Full" in self._simulation_parameters['boundary'] or "Transmission" in self._simulation_parameters['kernel'] else 0
         self._np_dtype = np.float32
         self._ti_dtype = ti.f32
         self.log_to_disk = self._simulation_parameters["log_to_disk"]
@@ -63,17 +64,17 @@ class CoreManager:
             
             while self.window.running:
                 if self.iteration <= 0:
-                    np_solved = self._BEM_manager.solved_vert_color.to_numpy()
-                    np_analytical_solved = self._BEM_manager.analytical_vert_color.to_numpy()
-                    np_diff_solved = self._BEM_manager.diff_vert_color.to_numpy()
+                    torch_solved = self._BEM_manager.solved_vert_color.to_torch().norm(dim=-1)
+                    torch_analytical_solved = self._BEM_manager.analytical_vert_color.to_torch().norm(dim=-1)
+                    torch_diff_solved = self._BEM_manager.diff_vert_color.to_torch().norm(dim=-1)
                     self._log_manager.InfoLog("analytical sovle min = {}, max = {}, mean = {}".format(
-                        np.min(np.linalg.norm(np_analytical_solved, axis=-1)), np.max(np.linalg.norm(np_analytical_solved, axis=-1)), np.mean(np.linalg.norm(np_analytical_solved, axis=-1)))
+                        torch_analytical_solved.min(), torch_analytical_solved.max(), torch_analytical_solved.mean())
                     )
                     self._log_manager.InfoLog("solve min = {}, max = {}, mean = {}".format(
-                        np.min(np.linalg.norm(np_solved, axis=-1)), np.max(np.linalg.norm(np_solved, axis=-1)), np.mean(np.linalg.norm(np_solved, axis=-1)))
+                        torch_solved.min(), torch_solved.max(), torch_solved.mean())
                     )
                     self._log_manager.InfoLog("residual min = {}, max = {}, mean = {}".format(
-                        np.min(np.linalg.norm(np_diff_solved, axis=-1)), np.max(np.linalg.norm(np_diff_solved, axis=-1)), np.mean(np.linalg.norm(np_diff_solved, axis=-1)))
+                        torch_diff_solved.min(), torch_diff_solved.max(), torch_diff_solved.mean())
                     )
                 self.camera.track_user_inputs(self.window, movement_speed=0.03, hold_key=ti.ui.LMB)
                 self.scene.set_camera(self.camera)

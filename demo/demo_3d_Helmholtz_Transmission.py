@@ -30,6 +30,9 @@ def main(args):
         'k': args.k,
         'kernel': args.kernel,
         'boundary': args.boundary,
+        'show': args.show,
+        'Q_Neumann': args.Q_Neumann,
+        'Q_Dirichlet': args.Q_Dirichlet,
         'log_to_disk': args.log_to_disk,
         'make_video': args.make_video,
         'show_wireframe': args.show_wireframe,
@@ -65,7 +68,10 @@ def main(args):
         expd_vec = ti.math.cexp(ti.Vector([0.0, x[2] * k * sqrt_n]))
         du_dx1 = b1 * (a2 + b2 * x[1]) * expd_vec
         du_dx2 = (a1 + b1 * x[0]) * b2 * expd_vec
-        du_dx3 = (a1 + b1 * x[0]) * (a2 + b2 * x[1]) * ti.Vector([-expd_vec.y, expd_vec.x]) * k * sqrt_n
+        du_dx3 = (a1 + b1 * x[0]) * (a2 + b2 * x[1]) * ti.math.cmul(
+            ti.Vector([0.0, k * sqrt_n]),
+            expd_vec
+        )
         vec_result = du_dx1 * normal_x.x + du_dx2 * normal_x.y + du_dx3 * normal_x.z
         return vec_result
     
@@ -107,7 +113,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--n_i",
         type=int,
-        default=3,
+        default=1,
         help="n_i, physical if n_i < n_o",
     )
 
@@ -131,6 +137,32 @@ if __name__ == '__main__':
         default="Full",
         choices=["Dirichlet", "Neumann", "Mix", "Full"],
         help="Do we need a video for visualization?",
+    )
+
+    parser.add_argument(
+        "--show",
+        type=str,
+        default="Neumann",
+        choices=["Default", "Neumann", "Dirichlet"],
+        help="Usually we apply Neumann(Dirichlet) boundary and solve Dirichlet(Neumann), "
+             "we just need to show what we solved in this (Default) case."
+             "However, sometimes we solve both, in this case, you need to indicate one for visualization",
+    )
+
+    parser.add_argument(
+        "--Q_Neumann",
+        type=int,
+        default=1,
+        choices=[0, 1],
+        help="The degree of Neumann attached shape function",
+    )
+
+    parser.add_argument(
+        "--Q_Dirichlet",
+        type=int,
+        default=1,
+        choices=[0, 1],
+        help="The degree of Dirichlet attached shape function",
     )
 
     parser.add_argument(

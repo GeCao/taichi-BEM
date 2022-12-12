@@ -30,12 +30,12 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
 
         self._Kmat = ti.Vector.field(self._n, dtype=self._ti_dtype, shape=())
         assert(self.N_Neumann + self.M_Dirichlet > 0)
-        if self.N_Neumann > 0 and self.M_Dirichlet > 0:
-            self._Kmat = ti.Vector.field(
-                self._n,
-                dtype=self._ti_dtype,
-                shape=(self.M_Dirichlet, self.N_Neumann)
-            )
+        # if self.N_Neumann > 0 and self.M_Dirichlet > 0:
+            # self._Kmat = ti.Vector.field(
+            #     self._n,
+            #     dtype=self._ti_dtype,
+            #     shape=(self.M_Dirichlet, self.N_Neumann)
+            # )
     
     @ti.func
     def get_K_mat(self):
@@ -402,44 +402,45 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
         """
         Compute BIO matix K'_mat
         """
-        if ti.static(self.N_Neumann > 0 and self.M_Dirichlet > 0):
-            self._Kmat.fill(0)
+        return
+        # if ti.static(self.N_Neumann > 0 and self.M_Dirichlet > 0):
+        #     self._Kmat.fill(0)
 
-            basis_func_num_Neumann = self._BEM_manager.get_num_of_basis_functions_from_Q(self._Q_Neumann)
-            basis_func_num_Dirichlet = self._BEM_manager.get_num_of_basis_functions_from_Q(self._Q_Dirichlet)
+        #     basis_func_num_Neumann = self._BEM_manager.get_num_of_basis_functions_from_Q(self._Q_Neumann)
+        #     basis_func_num_Dirichlet = self._BEM_manager.get_num_of_basis_functions_from_Q(self._Q_Dirichlet)
             
-            for local_I in range(self.num_of_panels_Dirichlet):
-                for local_J in range(self.num_of_panels_Neumann):
-                    global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
-                    global_j = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_J)
+        #     for local_I in range(self.num_of_panels_Dirichlet):
+        #         for local_J in range(self.num_of_panels_Neumann):
+        #             global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
+        #             global_j = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_J)
 
-                    panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
+        #             panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
 
-                    for ii in range(basis_func_num_Dirichlet):
-                        for jj in range(basis_func_num_Neumann):
-                            basis_function_index_x = self._BEM_manager.get_basis_function_index(self._Q_Dirichlet, ii)
-                            basis_function_index_y = self._BEM_manager.get_basis_function_index(self._Q_Neumann, jj)
+        #             for ii in range(basis_func_num_Dirichlet):
+        #                 for jj in range(basis_func_num_Neumann):
+        #                     basis_function_index_x = self._BEM_manager.get_basis_function_index(self._Q_Dirichlet, ii)
+        #                     basis_function_index_y = self._BEM_manager.get_basis_function_index(self._Q_Neumann, jj)
 
-                            local_charge_I = self._BEM_manager.proj_from_local_panel_index_to_local_charge_index(
-                                Q_=self._Q_Dirichlet,
-                                local_panel_index=local_I,
-                                basis_func_index=basis_function_index_x,
-                                panel_type=int(CellFluxType.DIRICHLET_TOBESOLVED)
-                            )
-                            local_charge_J = self._BEM_manager.proj_from_local_panel_index_to_local_charge_index(
-                                Q_=self._Q_Neumann,
-                                local_panel_index=local_J,
-                                basis_func_index=basis_function_index_y,
-                                panel_type=int(CellFluxType.NEUMANN_TOBESOLVED)
-                            )
-                            integrand = self.integrate_on_two_panels(
-                                k=k, sqrt_n=sqrt_n,
-                                triangle_x=global_i, triangle_y=global_j,
-                                basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y,
-                                panels_relation=panels_relation
-                            )
-                            if local_charge_I >= 0 and local_charge_J >= 0:
-                                self._Kmat[local_charge_I, local_charge_J] += integrand
+        #                     local_charge_I = self._BEM_manager.proj_from_local_panel_index_to_local_charge_index(
+        #                         Q_=self._Q_Dirichlet,
+        #                         local_panel_index=local_I,
+        #                         basis_func_index=basis_function_index_x,
+        #                         panel_type=int(CellFluxType.DIRICHLET_TOBESOLVED)
+        #                     )
+        #                     local_charge_J = self._BEM_manager.proj_from_local_panel_index_to_local_charge_index(
+        #                         Q_=self._Q_Neumann,
+        #                         local_panel_index=local_J,
+        #                         basis_func_index=basis_function_index_y,
+        #                         panel_type=int(CellFluxType.NEUMANN_TOBESOLVED)
+        #                     )
+        #                     integrand = self.integrate_on_two_panels(
+        #                         k=k, sqrt_n=sqrt_n,
+        #                         triangle_x=global_i, triangle_y=global_j,
+        #                         basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y,
+        #                         panels_relation=panels_relation
+        #                     )
+        #                     if local_charge_I >= 0 and local_charge_J >= 0:
+        #                         self._Kmat[local_charge_I, local_charge_J] += integrand
     
     @ti.kernel
     def apply_K_dot_panel_boundary(self, k: float, sqrt_n: float, multiplier: float):
