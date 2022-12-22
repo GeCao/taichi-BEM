@@ -1,2 +1,3 @@
 from .abstract_rhs_constructor import AbstractRHSConstructor
+from .rhs_constructor_2d import RHSConstructor2d
 from .rhs_constructor_3d import RHSConstructor3d

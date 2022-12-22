@@ -22,10 +22,12 @@ from src.managers import CoreManager
 
 ti.init(arch=ti.gpu, kernel_profiler=True)
 
-N = 50
-wave_numbers = [4.0 + i * 1.0 / N for i in range(2 * N)]
+N = 10
+wave_numbers = [1.0 / N + i * 1.0 / N for i in range(10 * N)]
 A1_inv_norms = [0.0 for i in range(len(wave_numbers))]
 A2_inv_norms = [0.0 for i in range(len(wave_numbers))]
+A1_augmented_inv_norms = [0.0 for i in range(len(wave_numbers))]
+A2_augmented_inv_norms = [0.0 for i in range(len(wave_numbers))]
 
 # BVP problem for Dirichlet Problem
 # Laplacian(u) = 0,
@@ -58,7 +60,7 @@ def analytical_function_Neumann(x, normal_x, sqrt_n: float = 1):
     vec_result = du_dx1 * normal_x.x + du_dx2 * normal_x.y + du_dx3 * normal_x.z
     return vec_result
 
-def compute_A1_inv_list(simulation_parameters):
+def compute_A1_inv_list(simulation_parameters, with_augmented: bool = False):
     core_manager = CoreManager(simulation_parameters)
     core_manager.initialization(
         analytical_function_Dirichlet=analytical_function_Dirichlet,
@@ -73,7 +75,13 @@ def compute_A1_inv_list(simulation_parameters):
         A1_inv_norms[epoch] = 1.0 * A1_inv_norm
         print("epoch = {}, k = {}, A1_norm = {}".format(epoch, k, A1_inv_norm))
 
-def compute_A2_inv_list(simulation_parameters):
+        if with_augmented:
+            need_recompute_matrix_layers = False
+            A1_augmented_inv_norm = core_manager._BEM_manager.get_augment_mat_A1_inv_norm(k, need_recompute_matrix_layers)
+            A1_augmented_inv_norms[epoch] = 1.0 * A1_augmented_inv_norm
+            print("epoch = {}, k = {}, A1_augmented_norm = {}".format(epoch, k, A1_augmented_inv_norm))
+
+def compute_A2_inv_list(simulation_parameters, with_augmented: bool = False):
     core_manager = CoreManager(simulation_parameters)
     core_manager.initialization(
         analytical_function_Dirichlet=analytical_function_Dirichlet,
@@ -88,36 +96,48 @@ def compute_A2_inv_list(simulation_parameters):
         A2_inv_norms[epoch] = 1.0 * A2_inv_norm
         print("epoch = {}, A2_norm = {}".format(epoch, A2_inv_norm))
 
-def plot_A1(save_path_):
+        if with_augmented:
+            need_recompute_matrix_layers = False
+            A2_augmented_inv_norm = core_manager._BEM_manager.get_augment_mat_A2_inv_norm(k, need_recompute_matrix_layers)
+            A2_augmented_inv_norms[epoch] = 1.0 * A2_augmented_inv_norm
+            print("epoch = {}, A2_augmented_norm = {}".format(epoch, A2_augmented_inv_norm))
+
+def plot_A1(save_path_, simulation_parameters, with_augmented: bool):
     fig = plt.figure(1)
-    plt.title("unit sphere transmission problem")
-    plt.xlabel("k")
-    plt.ylabel("norm")
+    plt.xlabel("Wavenumber k")
+    plt.ylabel("Operator norm")
     plt.yscale("log")
-    plt.plot(wave_numbers, A1_inv_norms, 'blue', label="A1_inv_norm")
-    # plt.plot(wave_numbers, A2_inv_norms, 'red', label="A2_inv_norm")
+    plt.title(simulation_parameters["object"] + r' transmission problem, $n_{i} = $' + str(simulation_parameters["n_i"]) + r', $n_{o} = $' + str(simulation_parameters["n_o"]))
+    plt.plot(wave_numbers, A1_inv_norms, 'blue', label=r'$||A_{I}^{-1}||$')
+    if with_augmented:
+        plt.plot(wave_numbers, A1_augmented_inv_norms, 'green', label=r'$|| \tilde A_{I}^{-1}||$')
     plt.legend()
     fig.savefig(save_path_)
 
-def plot_A2(save_path_):
+def plot_A2(save_path_, simulation_parameters, with_augmented: bool):
     fig = plt.figure(1)
-    plt.title("unit sphere transmission problem")
-    plt.xlabel("k")
-    plt.ylabel("norm")
+    plt.xlabel("Wavenumber k")
+    plt.ylabel("Operator norm")
     plt.yscale("log")
-    # plt.plot(wave_numbers, A1_inv_norms, 'blue', label="A1_inv_norm")
-    plt.plot(wave_numbers, A2_inv_norms, 'red', label="A2_inv_norm")
+    plt.title(simulation_parameters["object"] + r' transmission problem, $n_{i} = $' + str(simulation_parameters["n_i"]) + r', $n_{o} = $' + str(simulation_parameters["n_o"]))
+    plt.plot(wave_numbers, A2_inv_norms, 'red', label=r'$||A_{II}^{-1}||$')
+    if with_augmented:
+        plt.plot(wave_numbers, A2_augmented_inv_norms, 'orange', label=r'$|| \tilde A_{II}^{-1}||$')
     plt.legend()
     fig.savefig(save_path_)
 
-def plot_A1A2(save_path_):
+def plot_A1A2(save_path_, simulation_parameters, with_augmented: bool = False):
     fig = plt.figure(1)
-    plt.title("unit sphere transmission problem")
-    plt.xlabel("k")
-    plt.ylabel("norm")
+    plt.xlabel("Wavenumber k")
+    plt.ylabel("Operator norm")
     plt.yscale("log")
-    plt.plot(wave_numbers, A1_inv_norms, 'blue', label="A1_inv_norm")
-    plt.plot(wave_numbers, A2_inv_norms, 'red', label="A2_inv_norm")
+    plt.title(simulation_parameters["object"] + r' transmission problem, $n_{i} = $' + str(simulation_parameters["n_i"]) + r', $n_{o} = $' + str(simulation_parameters["n_o"]))
+    if with_augmented:
+        plt.plot(wave_numbers, A1_augmented_inv_norms, 'green', label=r'$|| \tilde A_{I}^{-1}||$')
+        plt.plot(wave_numbers, A2_augmented_inv_norms, 'orange', label=r'$|| \tilde A_{II}^{-1}||$')
+    else:
+        plt.plot(wave_numbers, A1_inv_norms, 'blue', label=r'$|| A_{I}^{-1}||$')
+        plt.plot(wave_numbers, A2_inv_norms, 'red', label=r'$|| A_{II}^{-1}||$')
     plt.legend()
     fig.savefig(save_path_)
 
@@ -144,27 +164,37 @@ def main(args):
 
     simulation_parameters["Q_Neumann"] = 1
     simulation_parameters["Q_Dirichlet"] = 1
-    save_path = os.path.join(demo_path, "data", "A2_plot_{}_{}.png".format(simulation_parameters["Q_Neumann"], simulation_parameters["Q_Dirichlet"]))
-    compute_A2_inv_list(simulation_parameters)
-    plot_A2(save_path)
-
-    # save_path = os.path.join(demo_path, "data", "A1_plot_1_1.png")
-    # simulation_parameters["Q_Neumann"] = 1
-    # simulation_parameters["Q_Dirichlet"] = 1
-    # compute_A1_inv_list(simulation_parameters)
-    # plot_A1(save_path)
-
-    # save_path = os.path.join(demo_path, "data", "A1_plot_0_0.png")
-    # simulation_parameters["Q_Neumann"] = 0
-    # simulation_parameters["Q_Dirichlet"] = 0
-    # compute_A1_inv_list(simulation_parameters)
-    # plot_A1(save_path)
-
-    # simulation_parameters["Q_Neumann"] = 1
-    # simulation_parameters["Q_Dirichlet"] = 1
-    # compute_A2_inv_list(simulation_parameters)
+    with_augmented = False
+    save_path = "A1_plot_{}_{}_{}.png".format(simulation_parameters["Q_Neumann"], simulation_parameters["Q_Dirichlet"], simulation_parameters["object"])
+    if with_augmented:
+        save_path = "Augment_" + save_path
     
-    # plot_A1A2(save_path)
+    if simulation_parameters["n_i"] > simulation_parameters["n_o"]:
+        save_path = "Physical_" + save_path
+    else:
+        save_path = "NonPhysical_" + save_path
+    
+    save_path = os.path.join(demo_path, "data", save_path)
+    compute_A1_inv_list(simulation_parameters, with_augmented=with_augmented)
+    plot_A1(save_path, simulation_parameters, with_augmented=with_augmented)
+
+    # simulation_parameters["Q_Neumann"] = 1
+    # simulation_parameters["Q_Dirichlet"] = 1
+    # use_augmented = False
+    # save_path = "A1A2_plot_{}_{}.png".format(simulation_parameters["Q_Neumann"], simulation_parameters["Q_Dirichlet"])
+    # if use_augmented:
+    #     save_path = "Augment_" + save_path
+    
+    # if simulation_parameters["n_i"] > simulation_parameters["n_o"]:
+    #     save_path = "Physical_" + save_path
+    # else:
+    #     save_path = "NonPhysical_" + save_path
+    
+    # save_path = os.path.join(demo_path, "data", save_path)
+    # compute_A1_inv_list(simulation_parameters, with_augmented=use_augmented)
+    # compute_A2_inv_list(simulation_parameters, with_augmented=use_augmented)
+    # plot_A1A2(save_path, simulation_parameters, with_augmented=use_augmented)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -181,8 +211,8 @@ if __name__ == '__main__':
     parser.add_argument(
         "--object",
         type=str,
-        default="sphere",
-        choices=["sphere", "cube", "hemisphere", "stanford_bunny", "fined_sphere"],
+        default="fined_sphere",
+        choices=["sphere", "cube", "hemisphere", "stanford_bunny", "analytical_sphere", "fined_sphere"],
         help="dimension: 2D or 3D",
     )
 

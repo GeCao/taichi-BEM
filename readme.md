@@ -3,6 +3,9 @@
 ### ----------Analytical(Left)----Solved(Middle)----Difference(Right)
 
 ### Laplace Equation
+<img src="demo/Laplace_solved_Neumann_2d.png" height="270">
+
+### Laplace Equation
 <img src="demo/Laplace_solved_Neumann.png" height="270">
 
 ### Helmholtz Equation
@@ -30,9 +33,9 @@
 cd taichi-BEM
 pip install -r requirements.txt
 cd demo
-python demo_3d_Laplace.py --boundary Dirichlet
-python demo_3d_Helmholtz.py --boundary Neumann --k 3
-python demo_3d_Helmholtz_Transmission.py --boundary Full --k 5
+python demo_Laplace.py --boundary Dirichlet --dim 3
+python demo_Helmholtz.py --boundary Neumann --k 3 --dim 3
+python demo_Helmholtz_Transmission.py --boundary Full --k 5 --dim 3
 ```
 
 ### Parameters

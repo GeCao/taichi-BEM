@@ -61,14 +61,14 @@ class RHSConstructor3d(AbstractRHSConstructor):
                     # Solve Neumann, apply Neumann boundary
                     global_i = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_I)
                     # Constant
-                    x1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 0)
-                    x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 1)
-                    x3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 2)
-                    x = (x1 + x2 + x3) / 3.0
+                    x = ti.Vector([0.0 for j in range(self._dim)], self._ti_dtype)
+                    for ii in range(self._dim):
+                        x += self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + ii) / float(self._dim)
+                    
                     normal_x = self._BEM_manager.get_panel_normal(global_i)
                     self._Neumann_boundary[global_i] += self.analytical_function_Neumann(x, normal_x, sqrt_ni)
                     self._f_boundary[Neumann_offset_j + local_I] += (
-                        self.analytical_function_Neumann(x, normal_x, sqrt_ni) - 0 * self.analytical_function_Neumann(x, normal_x, sqrt_no)
+                        self.analytical_function_Neumann(x, normal_x, sqrt_ni) - self.analytical_function_Neumann(x, normal_x, sqrt_no)
                     )
             elif ti.static(self._Q_Neumann == 1):
                 for global_vert_idx_i in range(self.num_of_vertices):
@@ -80,7 +80,7 @@ class RHSConstructor3d(AbstractRHSConstructor):
                         normal_x = self._BEM_manager.get_vert_normal(global_vert_idx_i)
                         self._Neumann_boundary[global_vert_idx_i] += self.analytical_function_Neumann(x, normal_x, sqrt_ni)
                         self._f_boundary[Neumann_offset_j + local_vert_idx_i] += (
-                            self.analytical_function_Neumann(x, normal_x, sqrt_ni) - 0 * self.analytical_function_Neumann(x, normal_x, sqrt_no)
+                            self.analytical_function_Neumann(x, normal_x, sqrt_ni) - self.analytical_function_Neumann(x, normal_x, sqrt_no)
                         )
             
             if ti.static(self._Q_Dirichlet == 0):
@@ -88,14 +88,14 @@ class RHSConstructor3d(AbstractRHSConstructor):
                     # Solve Dirichlet, apply Dirichlet boundary
                     global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
                     # Constant
-                    x1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 0)
-                    x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 1)
-                    x3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 2)
-                    x = (x1 + x2 + x3) / 3.0
+                    x = ti.Vector([0.0 for j in range(self._dim)], self._ti_dtype)
+                    for ii in range(self._dim):
+                        x += self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + ii) / float(self._dim)
+                    
                     normal_x = self._BEM_manager.get_panel_normal(global_i)
                     self._Dirichlet_boundary[global_i] += self.analytical_function_Dirichlet(x, sqrt_ni)
                     self._f_boundary[Dirichlet_offset_j + local_I] += (
-                        self.analytical_function_Dirichlet(x, sqrt_ni) - 0 * self.analytical_function_Dirichlet(x, sqrt_no)
+                        self.analytical_function_Dirichlet(x, sqrt_ni) - self.analytical_function_Dirichlet(x, sqrt_no)
                     )
             elif ti.static(self._Q_Dirichlet == 1):
                 for global_vert_idx_i in range(self.num_of_vertices):
@@ -107,7 +107,7 @@ class RHSConstructor3d(AbstractRHSConstructor):
                         normal_x = self._BEM_manager.get_vert_normal(global_vert_idx_i)
                         self._Dirichlet_boundary[global_vert_idx_i] += self.analytical_function_Dirichlet(x, sqrt_ni)
                         self._f_boundary[Dirichlet_offset_j + local_vert_idx_i] += (
-                            self.analytical_function_Dirichlet(x, sqrt_ni) - 0 * self.analytical_function_Dirichlet(x, sqrt_no)
+                            self.analytical_function_Dirichlet(x, sqrt_ni) - self.analytical_function_Dirichlet(x, sqrt_no)
                         )
         else:
             if ti.static(self._Q_Neumann == 0):
@@ -115,10 +115,10 @@ class RHSConstructor3d(AbstractRHSConstructor):
                     # Solve Dirichlet
                     global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
                     # Constant
-                    x1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 0)
-                    x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 1)
-                    x3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 2)
-                    x = (x1 + x2 + x3) / 3.0
+                    x = ti.Vector([0.0 for j in range(self._dim)], self._ti_dtype)
+                    for ii in range(self._dim):
+                        x += self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + ii) / float(self._dim)
+                    
                     normal_x = self._BEM_manager.get_panel_normal(global_i)
                     fx = self.analytical_function_Neumann(x, normal_x)
                     self._Neumann_boundary[global_i] += fx
@@ -135,10 +135,10 @@ class RHSConstructor3d(AbstractRHSConstructor):
                     # Solve Neumann
                     global_i = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_I)
                     # Constant
-                    x1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 0)
-                    x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 1)
-                    x3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + 2)
-                    x = (x1 + x2 + x3) / 3.0
+                    x = ti.Vector([0.0 for j in range(self._dim)], self._ti_dtype)
+                    for ii in range(self._dim):
+                        x += self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + ii) / float(self._dim)
+                    
                     normal_x = self._BEM_manager.get_panel_normal(global_i)
                     gx = self.analytical_function_Dirichlet(x)
                     self._Dirichlet_boundary[global_i] += gx
@@ -200,38 +200,15 @@ class RHSConstructor3d(AbstractRHSConstructor):
         self._f_boundary = None
     
     @ti.func
-    def interplate_from_unit_triangle_to_general(self, r1, r2, x1, x2, x3):
-        """
-        r2
-         ^
-        1|                                      x2
-         |   /|                                 /|
-         |  / |                                / |
-         | /  |                      ->       /  |
-         |/   |                              /   |
-        0|----|1--->r1                    x3/____|x1
-         0
-         
-         - How to project a unit triangle (x1, x2, x3) to a general one?
-         - If we choose (0, 0)->x1, (1, 0)->x2, (1, 1)->x3
-         - x (r1, r2) = (1 - r1) * x1 + (r1 - r2) * x2 + r2 * x3
-        """
-        return (1 - r1) * x1 + (r1 - r2) * x2 + r2 * x3
-    
-    @ti.func
-    def shape_function(self, r1, r2, i: int):
-        return self._BEM_manager.shape_function(r1, r2, i)
-    
-    @ti.func
     def integrate_on_single_triangle(
         self,
-        triangle_x: int,
+        panel_x: int,
         basis_function_index_x: int,
         basis_function_index_y: int,
     ):
         """Get Integration on a single triangle, where
         int_{Tau_x} (func) dx
-            = (2 * area_x) * int_{unit_triangle} (func) (Jacobian) dr1 dr2
+            = (2 * area_x) * int_{unit_panel} (func) (Jacobian) dr1 dr2
         
          0
 
@@ -252,7 +229,7 @@ class RHSConstructor3d(AbstractRHSConstructor):
         """
         integrand = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
 
-        area_x = self._BEM_manager.get_panel_area(triangle_x)
+        area_x = self._BEM_manager.get_panel_area(panel_x)
 
         GaussQR2 = self._GaussQR * self._GaussQR
         
@@ -308,7 +285,7 @@ class RHSConstructor3d(AbstractRHSConstructor):
                         )
                         
                         integrand = self.integrate_on_single_triangle(
-                            triangle_x=global_i,
+                            panel_x=global_i,
                             basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y
                         )
 
@@ -344,7 +321,7 @@ class RHSConstructor3d(AbstractRHSConstructor):
                         )
 
                         integrand = self.integrate_on_single_triangle(
-                            triangle_x=global_i,
+                            panel_x=global_i,
                             basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y
                         )
 

@@ -71,8 +71,14 @@ class MeshManager:
         self._log_manager.InfoLog("====================================================================")
         self._log_manager.InfoLog("Loading object from path {} started".format(str(self._object_path)))
 
-        np_vertices, np_faces = self.load_asset(scale=None, translate=None)
-        # np_vertices, np_faces = self.load_analytical_sphere()
+        if self._dim == 2:
+            np_vertices, np_faces = self.load_analytical_disk()
+        elif self._dim == 3:
+            if "analytical" in self._core_manager._simulation_parameters['object']:
+                np_vertices, np_faces = self.load_analytical_sphere()
+            else:
+                np_vertices, np_faces = self.load_asset(scale=None, translate=None)
+        
         np_faces = np_faces.flatten()
 
         self.vertices = ti.Vector.field(
@@ -91,36 +97,44 @@ class MeshManager:
         self.vert_normals = ti.Vector.field(
             n=self._dim, dtype=self._ti_dtype, shape=(self.num_of_vertices,)
         )  # [NumOfVertices, dim]
-        if self._dim == 3:
-            self.panel_areas = ti.field(dtype=self._ti_dtype, shape=(self.num_of_panels,))  # [NumOfFaces]
-            self.vert_areas = ti.field(dtype=self._ti_dtype, shape=(self.num_of_vertices,))  # [NumOfVertices]
-            np_panel_areas = np.zeros(self.panel_areas.shape, dtype=self._np_dtype)
-            np_vert_areas = np.zeros(self.vert_areas.shape, dtype=self._np_dtype)
-            np_panel_normals = np.zeros((self.num_of_panels, self._dim), dtype=self._np_dtype)
-            np_vert_normals = np.zeros((self.num_of_vertices, self._dim), dtype=self._np_dtype)
+        self.panel_areas = ti.field(dtype=self._ti_dtype, shape=(self.num_of_panels,))  # [NumOfFaces]
+        self.vert_areas = ti.field(dtype=self._ti_dtype, shape=(self.num_of_vertices,))  # [NumOfVertices]
+
+        np_panel_areas = np.zeros(self.panel_areas.shape, dtype=self._np_dtype)
+        np_vert_areas = np.zeros(self.vert_areas.shape, dtype=self._np_dtype)
+        np_panel_normals = np.zeros((self.num_of_panels, self._dim), dtype=self._np_dtype)
+        np_vert_normals = np.zeros((self.num_of_vertices, self._dim), dtype=self._np_dtype)
+
+        if self._dim == 2:
+            for i in range(self.num_of_panels):
+                edge = np_vertices[np_faces[self._dim * i + 1]] - np_vertices[np_faces[self._dim * i + 0]]
+                np_panel_areas[i] = np.linalg.norm(edge)
+                np_panel_normals[i][0], np_panel_normals[i][1] = edge[1], -edge[0]
+                np_panel_normals[i] /= np.linalg.norm(np_panel_normals[i])
+        elif self._dim == 3:
             for i in range(self.num_of_panels):
                 np_panel_areas[i] = 0.5 * np.linalg.norm(np.cross(
-                    np_vertices[np_faces[3 * i + 1]] - np_vertices[np_faces[3 * i + 0]],
-                    np_vertices[np_faces[3 * i + 2]] - np_vertices[np_faces[3 * i + 1]],
+                    np_vertices[np_faces[self._dim * i + 1]] - np_vertices[np_faces[self._dim * i + 0]],
+                    np_vertices[np_faces[self._dim * i + 2]] - np_vertices[np_faces[self._dim * i + 1]],
                 ))
 
                 np_panel_normals[i] = np.cross(
-                    np_vertices[np_faces[3 * i + 1]] - np_vertices[np_faces[3 * i + 0]],
-                    np_vertices[np_faces[3 * i + 2]] - np_vertices[np_faces[3 * i + 1]],
+                    np_vertices[np_faces[self._dim * i + 1]] - np_vertices[np_faces[self._dim * i + 0]],
+                    np_vertices[np_faces[self._dim * i + 2]] - np_vertices[np_faces[self._dim * i + 1]],
                 )
                 np_panel_normals[i] /= np.linalg.norm(np_panel_normals[i])
             
-            for i in range(self.num_of_panels * self._dim):
-                np_vert_areas[np_faces[i]] += np_panel_areas[i // self._dim] / 3.0
-                np_vert_normals[np_faces[i]] += np_panel_normals[i // self._dim]
+        for i in range(self.num_of_panels * self._dim):
+            np_vert_areas[np_faces[i]] += np_panel_areas[i // self._dim] / float(self._dim)
+            np_vert_normals[np_faces[i]] += np_panel_normals[i // self._dim]
+        
+        for i in range(self.num_of_vertices):
+            np_vert_normals[i] = np_vert_normals[i] / np.linalg.norm(np_vert_normals[i])
             
-            for i in range(self.num_of_vertices):
-                np_vert_normals[i] = np_vert_normals[i] / np.linalg.norm(np_vert_normals[i])
-            
-            self.panel_areas.from_numpy(np_panel_areas)
-            self.vert_areas.from_numpy(np_vert_areas)
-            self.panel_normals.from_numpy(np_panel_normals)
-            self.vert_normals.from_numpy(np_vert_normals)
+        self.panel_areas.from_numpy(np_panel_areas)
+        self.vert_areas.from_numpy(np_vert_areas)
+        self.panel_normals.from_numpy(np_panel_normals)
+        self.vert_normals.from_numpy(np_vert_normals)
 
         self.panel_types = ti.field(dtype=ti.i32, shape=(self.num_of_panels,))
         self.vertice_types = ti.field(dtype=ti.i32, shape=(self.num_of_vertices,))
@@ -141,6 +155,9 @@ class MeshManager:
             self.set_mixed_bvp()
         else:
             raise RuntimeError("The Boundary Type can only be Dirichlet/Neumann/Mix")
+        
+        self._log_manager.InfoLog("Neumann To be solved = {}".format(self.N_Neumann))
+        self._log_manager.InfoLog("Dirichlet To be solved = {}".format(self.M_Dirichlet))
 
         self.initialized = True
 
@@ -458,10 +475,10 @@ class MeshManager:
                      -r * math.cos(theta)]
                 )
                 if i == 1:
-                    panels.append([0, 1 + j, 1 + (j + 1) % cols])
+                    panels.append([0, 1 + (j + 1) % cols, 1 + j])
                 else:
                     panels.append([1 + (i - 2) * cols + j, 1 + (i - 2) * cols + (j + 1) % cols, 1 + (i - 1) * cols + j])
-                    panels.append([1 + (i - 2) * cols + (j + 1) % cols, 1 + (i - 1) * cols + j, 1 + (i - 1) * cols + (j + 1) % cols])
+                    panels.append([1 + (i - 2) * cols + (j + 1) % cols, 1 + (i - 1) * cols + (j + 1) % cols, 1 + (i - 1) * cols + j])
         
         vertices.append([0.0, 0.0, r])
         for j in range(cols):
@@ -469,7 +486,7 @@ class MeshManager:
         
         return np.array(vertices, dtype=self._np_dtype), np.array(panels, dtype=np.int64)
 
-    def load_analytical_disk(self, r: float=1.0, N: int=128):
+    def load_analytical_disk(self, r: float=1.0, N: int=256):
         vertices = np.array(
             [[r * math.cos(2.0 * math.pi * i / N) for i in range(N)], 
              [r * math.sin(2.0 * math.pi * i / N) for i in range(N)]],
@@ -482,6 +499,9 @@ class MeshManager:
             dtype=np.int64
         )
 
+        vertices = np.transpose(vertices, (1, 0))
+        panels = np.transpose(panels, (1, 0))
+
         return vertices, panels
     
     @ti.func
@@ -490,25 +510,34 @@ class MeshManager:
         if i == j:
             panel_relation = int(PanelsRelation.COINCIDE)
         else:
-            has_common_vertex = False
-            for ii in range(self._dim):
-                edge1_vert_idx1 = self.panels[self._dim * i + ii]
-                edge1_vert_idx2 = self.panels[self._dim * i + (ii + 1) % self._dim]
-                for jj in range(self._dim):
-                    edge2_vert_idx1 = self.panels[self._dim * j + jj]
-                    edge2_vert_idx2 = self.panels[self._dim * j + (jj + 1) % self._dim]
+            if self._dim == 2:
+                for ii in range(self._dim):
+                    edge1_vert_idx = self.panels[self._dim * i + ii]
+                    for jj in range(self._dim):
+                        edge2_vert_idx = self.panels[self._dim * j + jj]
 
-                    if edge1_vert_idx1 == edge2_vert_idx1 and edge1_vert_idx2 == edge2_vert_idx2:
-                        panel_relation = int(PanelsRelation.COMMON_EDGE)
-                    
-                    if edge1_vert_idx1 == edge2_vert_idx2 and edge1_vert_idx2 == edge2_vert_idx1:
-                        panel_relation = int(PanelsRelation.COMMON_EDGE)
-                    
-                    if edge1_vert_idx1 == edge2_vert_idx1:
-                        has_common_vertex = True
-            
-            if has_common_vertex and not (panel_relation == int(PanelsRelation.COMMON_EDGE)):
-                panel_relation = int(PanelsRelation.COMMON_VERTEX)
+                        if edge1_vert_idx == edge2_vert_idx:
+                            panel_relation = int(PanelsRelation.COMMON_VERTEX)
+            elif self._dim == 3:
+                has_common_vertex = False
+                for ii in range(self._dim):
+                    edge1_vert_idx1 = self.panels[self._dim * i + ii]
+                    edge1_vert_idx2 = self.panels[self._dim * i + (ii + 1) % self._dim]
+                    for jj in range(self._dim):
+                        edge2_vert_idx1 = self.panels[self._dim * j + jj]
+                        edge2_vert_idx2 = self.panels[self._dim * j + (jj + 1) % self._dim]
+
+                        if edge1_vert_idx1 == edge2_vert_idx1 and edge1_vert_idx2 == edge2_vert_idx2:
+                            panel_relation = int(PanelsRelation.COMMON_EDGE)
+                        
+                        if edge1_vert_idx1 == edge2_vert_idx2 and edge1_vert_idx2 == edge2_vert_idx1:
+                            panel_relation = int(PanelsRelation.COMMON_EDGE)
+                        
+                        if edge1_vert_idx1 == edge2_vert_idx1:
+                            has_common_vertex = True
+                
+                if has_common_vertex and not (panel_relation == int(PanelsRelation.COMMON_EDGE)):
+                    panel_relation = int(PanelsRelation.COMMON_VERTEX)
         
         return panel_relation
     

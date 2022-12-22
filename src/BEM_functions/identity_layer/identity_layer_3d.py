@@ -41,34 +41,11 @@ class IdentityLayer3d(AbstractIdentityLayer):
         self.num_of_panels = 0
         self.num_of_panels_Neumann = 0
         self.num_of_panels_Dirichlet = 0
-
-    @ti.func
-    def interplate_from_unit_triangle_to_general(self, r1, r2, x1, x2, x3):
-        """
-        r2
-         ^
-        1|                                      x2
-         |   /|                                 /|
-         |  / |                                / |
-         | /  |                      ->       /  |
-         |/   |                              /   |
-        0|----|1--->r1                    x3/____|x1
-         0
-         
-         - How to project a unit triangle (x1, x2, x3) to a general one?
-         - If we choose (0, 0)->x1, (1, 0)->x2, (1, 1)->x3
-         - x (r1, r2) = (1 - r1) * x1 + (r1 - r2) * x2 + r2 * x3
-        """
-        return (1 - r1) * x1 + (r1 - r2) * x2 + r2 * x3
-    
-    @ti.func
-    def shape_function(self, r1, r2, i: int):
-        return self._BEM_manager.shape_function(r1, r2, i)
     
     @ti.func
     def integrate_on_single_panel(
         self,
-        triangle_x: int,
+        panel_x: int,
         basis_function_index_x: int,
         basis_function_index_y: int,
     ):
@@ -129,21 +106,16 @@ class IdentityLayer3d(AbstractIdentityLayer):
 
         Get Integration on coincide triangles, where
         int_{Tau_x} int_{Tau_x} (func) dx dy
-            = (2 * area_x) * (2 * area_y) *           int_{unit_triangle}    int_{unit_triangle}     (func) dx             dy
+            = (2 * area_x) * (2 * area_y) *           int_{unit_panel}    int_{unit_panel}     (func) dx             dy
             = (2 * area_x) * (2 * area_y) * sum_{6} * int_{0->1} int_{0->w1} int_{0->w2} int_{0->w3} (func) d(w1) d(w2)    d(w3) d(w4)
             = (2 * area_x) * (2 * area_y) * sum_{6} * int_{0->1} int_{0->1}  int_{0->1}  int_{0->1}  (func) d(xsi) d(eta1) d(eta2) d(eta3)
         
         Similarly, besides the coincide case we have mentioned above,
-        other approaches such like common vertices/edges can be refered by chapter 5.2.2 and 5.2.2
+        other approaches such like common vertices/edges can be refered by chapter 5.2.2 and 5.2.3
         """
         integrand = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
 
-        x1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_x + 0)
-        x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_x + 1)
-        x3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_x + 2)
-        area_x = self._BEM_manager.get_panel_area(triangle_x)
-        normal_x = self._BEM_manager.get_panel_normal(triangle_x)
-        panel_type = self._BEM_manager.get_panel_type(triangle_x)
+        area_x = self._BEM_manager.get_panel_area(panel_x)
 
         GaussQR2 = self._GaussQR * self._GaussQR
         
@@ -207,7 +179,7 @@ class IdentityLayer3d(AbstractIdentityLayer):
                         )
 
                         integrand = self.integrate_on_single_panel(
-                            triangle_x=global_i,
+                            panel_x=global_i,
                             basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y
                         )
 
@@ -248,7 +220,7 @@ class IdentityLayer3d(AbstractIdentityLayer):
                         )
 
                         integrand = self.integrate_on_single_panel(
-                            triangle_x=global_i,
+                            panel_x=global_i,
                             basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y
                         )
 

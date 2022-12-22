@@ -52,37 +52,15 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
         self.num_of_panels_Dirichlet = 0
 
         self._Kmat = None
-
-    @ti.func
-    def interplate_from_unit_triangle_to_general(self, r1, r2, x1, x2, x3):
-        """
-        r2
-         ^
-        1|                                      x2
-         |   /|                                 /|
-         |  / |                                / |
-         | /  |                      ->       /  |
-         |/   |                              /   |
-        0|----|1--->r1                    x3/____|x1
-         0
-         
-         - How to project a unit triangle (x1, x2, x3) to a general one?
-         - If we choose (0, 0)->x1, (1, 0)->x2, (1, 1)->x3
-         - x (r1, r2) = (1 - r1) * x1 + (r1 - r2) * x2 + r2 * x3
-        """
-        return (1 - r1) * x1 + (r1 - r2) * x2 + r2 * x3
-    
-    @ti.func
-    def shape_function(self, r1, r2, i: int):
-        return self._BEM_manager.shape_function(r1, r2, i)
     
     @ti.func
     def integrate_on_two_panels(
         self,
+        rands: ti.types.vector(4, int),
         k: float,
         sqrt_n: float,
-        triangle_x: int,
-        triangle_y: int,
+        panel_x: int,
+        panel_y: int,
         basis_function_index_x: int,
         basis_function_index_y: int,
         panels_relation: int
@@ -144,7 +122,7 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
 
         Get Integration on coincide triangles, where
         int_{Tau_x} int_{Tau_x} (func) dx dy
-            = (2 * area_x) * (2 * area_y) *           int_{unit_triangle}    int_{unit_triangle}     (func) dx             dy
+            = (2 * area_x) * (2 * area_y) *           int_{unit_panel}    int_{unit_panel}     (func) dx             dy
             = (2 * area_x) * (2 * area_y) * sum_{6} * int_{0->1} int_{0->w1} int_{0->w2} int_{0->w3} (func) d(w1) d(w2)    d(w3) d(w4)
             = (2 * area_x) * (2 * area_y) * sum_{6} * int_{0->1} int_{0->1}  int_{0->1}  int_{0->1}  (func) d(xsi) d(eta1) d(eta2) d(eta3)
         
@@ -153,247 +131,241 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
         """
         integrand = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
 
-        x1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_x + 0)
-        x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_x + 1)
-        x3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_x + 2)
-        area_x = self._BEM_manager.get_panel_area(triangle_x)
-        normal_x = self._BEM_manager.get_panel_normal(triangle_x)
+        x1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_x + 0)
+        x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_x + 1)
+        x3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_x + 2)
+        area_x = self._BEM_manager.get_panel_area(panel_x)
+        normal_x = self._BEM_manager.get_panel_normal(panel_x)
 
-        y1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_y + 0)
-        y2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_y + 1)
-        y3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * triangle_y + 2)
-        area_y = self._BEM_manager.get_panel_area(triangle_y)
-        normal_y = self._BEM_manager.get_panel_normal(triangle_y)
+        y1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_y + 0)
+        y2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_y + 1)
+        y3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_y + 2)
+        area_y = self._BEM_manager.get_panel_area(panel_y)
+        normal_y = self._BEM_manager.get_panel_normal(panel_y)
 
-        GaussQR2 = self._GaussQR * self._GaussQR
-        GaussQR4 = GaussQR2 * GaussQR2
+        # Generate number(xsi, eta1, eta2, eta3)
+        xsi = self._BEM_manager.Gauss_points_1d[rands.x]
+        eta1 = self._BEM_manager.Gauss_points_1d[rands.y]
+        eta2 = self._BEM_manager.Gauss_points_1d[rands.z]
+        eta3 = self._BEM_manager.Gauss_points_1d[rands.w]
+
+        # Scale your weight
+        weight_x = self._BEM_manager.Gauss_weights_1d[rands.x] * self._BEM_manager.Gauss_weights_1d[rands.y] * (area_x * 2.0)
+        weight_y = self._BEM_manager.Gauss_weights_1d[rands.z] * self._BEM_manager.Gauss_weights_1d[rands.w] * (area_y * 2.0)
         
-        for gauss_number in range(GaussQR4):
-            iii = gauss_number // GaussQR2
-            jjj = gauss_number % GaussQR2
+        # Get your final weight
+        weight = weight_x * weight_y
 
-            # Generate number(xsi, eta1, eta2, eta3)
-            xsi = self._BEM_manager.Gauss_points_1d[iii // self._GaussQR]
-            eta1 = self._BEM_manager.Gauss_points_1d[iii % self._GaussQR]
-            eta2 = self._BEM_manager.Gauss_points_1d[jjj // self._GaussQR]
-            eta3 = self._BEM_manager.Gauss_points_1d[jjj % self._GaussQR]
+        if panels_relation == int(PanelsRelation.SEPARATE):
+            # Generate number(r1, r2) for panel x
+            r1_x = xsi
+            r2_x = eta1 * r1_x
+            # Generate number(r1, r2) for panel y
+            r1_y = eta2
+            r2_y = eta3 * r1_y
 
-            # Scale your weight
-            weight_x = self._BEM_manager.Gauss_weights_1d[iii // self._GaussQR] * self._BEM_manager.Gauss_weights_1d[iii % self._GaussQR] * (area_x * 2.0)
-            weight_y = self._BEM_manager.Gauss_weights_1d[jjj // self._GaussQR] * self._BEM_manager.Gauss_weights_1d[jjj % self._GaussQR] * (area_y * 2.0)
-            # Get your final weight
-            weight = weight_x * weight_y
+            # Get your jacobian
+            jacobian = r1_x * r1_y
 
-            if panels_relation == int(PanelsRelation.SEPARATE):
-                # Generate number(r1, r2) for panel x
-                r1_x = xsi
-                r2_x = eta1 * r1_x
-                # Generate number(r1, r2) for panel y
-                r1_y = eta2
-                r2_y = eta3 * r1_y
+            x = self.interplate_from_unit_panel_to_general(
+                r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
+            )
+            y = self.interplate_from_unit_panel_to_general(
+                r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
+            )
+            phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+            phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
 
-                # Get your jacobian
-                jacobian = r1_x * r1_y
+            integrand += (
+                self.grad_G_y(x=y, y=x, normal_y=normal_x, k=k, sqrt_n=sqrt_n) * phix * phiy
+            ) * weight * jacobian
+        elif panels_relation == int(PanelsRelation.COINCIDE):
+            # Get your jacobian
+            jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
 
-                x = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
-                )
-                y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
-                )
-                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-
-                integrand += (
-                    self.grad_G_y(y, x, normal_x, k, sqrt_n) * phix * phiy
-                ) * weight * jacobian
-            elif panels_relation == int(PanelsRelation.COINCIDE):
-                # Get your jacobian
-                jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
-
-                # This algorithm includes 6 regions D1 ~ D6
-                # By symmetic of kernel, we can simply compress it into 3 regions
-                w = ti.Vector([xsi, xsi * eta1, xsi * eta1 * eta2, xsi * eta1 * eta2 * eta3])
-                for iiii in range(self._BEM_manager.m_mats_coincide.shape[0]):
-                    xz = self._BEM_manager.m_mats_coincide[iiii] @ w  # On unit triangle
-                    
-                    r1_x, r2_x = xz[0], xz[1]
-                    r1_y, r2_y = xz[0] - xz[2], xz[1] - xz[3]
-
-                    x = self.interplate_from_unit_triangle_to_general(
-                        r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
-                    )
-                    y = self.interplate_from_unit_triangle_to_general(
-                        r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
-                    )
-                    phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                    phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-
-                    # D1, D3, D5
-                    integrand += (
-                        self.grad_G_y(y, x, normal_x, k, sqrt_n) * phix * phiy
-                    ) * weight * jacobian
-
-                    r1_y, r2_y = xz[0], xz[1]
-                    r1_x, r2_x = xz[0] - xz[2], xz[1] - xz[3]
-
-                    x = self.interplate_from_unit_triangle_to_general(
-                        r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
-                    )
-                    y = self.interplate_from_unit_triangle_to_general(
-                        r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
-                    )
-                    phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                    phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-
-                    # D2, D4, D6
-                    integrand += (
-                        self.grad_G_y(y, x, normal_x, k, sqrt_n) * phix * phiy
-                    ) * weight * jacobian
-            elif panels_relation == int(PanelsRelation.COMMON_VERTEX):
-                # This algorithm includes 6 regions D1, D2
-                # D1
-                w = ti.Vector(
-                    [xsi, xsi * eta1, xsi * eta2, xsi * eta2 * eta3]
-                )
-                r1_x, r2_x = w[0], w[1]
-                r1_y, r2_y = w[2], w[3]
-                x = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
-                )
-                y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
-                )
-                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-
-                jacobian = xsi * xsi * xsi * eta2
-                integrand += (
-                    self.grad_G_y(y, x, normal_x, k, sqrt_n) * phix * phiy
-                ) * weight * jacobian
-
-                # D2
-                w = ti.Vector(
-                    [xsi * eta2, xsi * eta2 * eta3, xsi, xsi * eta1]
-                )
-                r1_x, r2_x = w[0], w[1]
-                r1_y, r2_y = w[2], w[3]
-                x = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
-                )
-                y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
-                )
-                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-
-                jacobian = xsi * xsi * xsi * eta2
-                integrand += (
-                    self.grad_G_y(y, x, normal_x, k, sqrt_n) * phix * phiy
-                ) * weight * jacobian
-            elif panels_relation == int(PanelsRelation.COMMON_EDGE):
-                # This algorithm includes 6 regions D1 ~ D5
-                # D1
-                w = ti.Vector(
-                    [xsi, -xsi * eta1 * eta2, xsi * eta1 * (1.0 - eta2), xsi * eta1 * eta3]
-                )
-                r1_x, r2_x = w[0], w[3]
-                r1_y, r2_y = r1_x + w[1], w[2]
-                x = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
-                )
-                y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
-                )
-                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-
-                jacobian = xsi * xsi * xsi * eta1 * eta1
-                integrand += (
-                    self.grad_G_y(y, x, normal_x, k, sqrt_n) * phix * phiy
-                ) * weight * jacobian
-
-                # D2
-                w = ti.Vector(
-                    [xsi, -xsi * eta1 * eta2 * eta3, xsi * eta1 * eta2 * (1.0 - eta3), xsi * eta1]
-                )
-                r1_x, r2_x = w[0], w[3]
-                r1_y, r2_y = r1_x + w[1], w[2]
-                x = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
-                )
-                y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
-                )
-                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-
-                jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
-                integrand += (
-                    self.grad_G_y(y, x, normal_x, k, sqrt_n) * phix * phiy
-                ) * weight * jacobian
-
-                # D3
-                w = ti.Vector(
-                    [xsi * (1.0 - eta1 * eta2), xsi * eta1 * eta2, xsi * eta1 * eta2 * eta3, xsi * eta1 * (1.0 - eta2)]
-                )
-                r1_x, r2_x = w[0], w[3]
-                r1_y, r2_y = r1_x + w[1], w[2]
-                x = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
-                )
-                y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
-                )
-                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-
-                jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
-                integrand += (
-                    self.grad_G_y(y, x, normal_x, k, sqrt_n) * phix * phiy
-                ) * weight * jacobian
-
-                # D4
-                w = ti.Vector(
-                    [xsi * (1.0 - eta1 * eta2 * eta3), xsi * eta1 * eta2 * eta3, xsi * eta1, xsi * eta1 * eta2 * (1.0 - eta3)]
-                )
-                r1_x, r2_x = w[0], w[3]
-                r1_y, r2_y = r1_x + w[1], w[2]
-
-                x = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
-                )
-                y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
-                )
-                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-
-                jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
-                integrand += (
-                    self.grad_G_y(y, x, normal_x, k, sqrt_n) * phix * phiy
-                ) * weight * jacobian
-
-                # D5
-                w = ti.Vector(
-                    [xsi * (1.0 - eta1 * eta2 * eta3), xsi * eta1 * eta2 * eta3, xsi * eta1 * eta2, xsi * eta1 * (1.0 - eta2 * eta3)]
-                )
-                r1_x, r2_x = w[0], w[3]
-                r1_y, r2_y = r1_x + w[1], w[2]
-
-                x = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
-                )
-                y = self.interplate_from_unit_triangle_to_general(
-                    r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
-                )
-                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
+            # This algorithm includes 6 regions D1 ~ D6
+            # By symmetic of kernel, we can simply compress it into 3 regions
+            w = ti.Vector([xsi, xsi * eta1, xsi * eta1 * eta2, xsi * eta1 * eta2 * eta3])
+            for iiii in range(self._BEM_manager.m_mats_coincide.shape[0]):
+                xz = self._BEM_manager.m_mats_coincide[iiii] @ w  # On unit triangle
                 
-                jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
+                r1_x, r2_x = xz[0], xz[1]
+                r1_y, r2_y = xz[0] - xz[2], xz[1] - xz[3]
+
+                x = self.interplate_from_unit_panel_to_general(
+                    r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
+                )
+                y = self.interplate_from_unit_panel_to_general(
+                    r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
+                )
+                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+                phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
+
+                # D1, D3, D5
                 integrand += (
-                    self.grad_G_y(y, x, normal_x, k, sqrt_n) * phix * phiy
+                    self.grad_G_y(x=y, y=x, normal_y=normal_x, k=k, sqrt_n=sqrt_n) * phix * phiy
                 ) * weight * jacobian
+
+                r1_y, r2_y = xz[0], xz[1]
+                r1_x, r2_x = xz[0] - xz[2], xz[1] - xz[3]
+
+                x = self.interplate_from_unit_panel_to_general(
+                    r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
+                )
+                y = self.interplate_from_unit_panel_to_general(
+                    r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
+                )
+                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+                phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
+
+                # D2, D4, D6
+                integrand += (
+                    self.grad_G_y(x=y, y=x, normal_y=normal_x, k=k, sqrt_n=sqrt_n) * phix * phiy
+                ) * weight * jacobian
+        elif panels_relation == int(PanelsRelation.COMMON_VERTEX):
+            # This algorithm includes 6 regions D1, D2
+            # D1
+            w = ti.Vector(
+                [xsi, xsi * eta1, xsi * eta2, xsi * eta2 * eta3]
+            )
+            r1_x, r2_x = w[0], w[1]
+            r1_y, r2_y = w[2], w[3]
+            x = self.interplate_from_unit_panel_to_general(
+                r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
+            )
+            y = self.interplate_from_unit_panel_to_general(
+                r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
+            )
+            phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+            phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
+
+            jacobian = xsi * xsi * xsi * eta2
+            integrand += (
+                self.grad_G_y(x=y, y=x, normal_y=normal_x, k=k, sqrt_n=sqrt_n) * phix * phiy
+            ) * weight * jacobian
+
+            # D2
+            w = ti.Vector(
+                [xsi * eta2, xsi * eta2 * eta3, xsi, xsi * eta1]
+            )
+            r1_x, r2_x = w[0], w[1]
+            r1_y, r2_y = w[2], w[3]
+            x = self.interplate_from_unit_panel_to_general(
+                r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
+            )
+            y = self.interplate_from_unit_panel_to_general(
+                r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
+            )
+            phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+            phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
+
+            jacobian = xsi * xsi * xsi * eta2
+            integrand += (
+                self.grad_G_y(x=y, y=x, normal_y=normal_x, k=k, sqrt_n=sqrt_n) * phix * phiy
+            ) * weight * jacobian
+        elif panels_relation == int(PanelsRelation.COMMON_EDGE):
+            # This algorithm includes 6 regions D1 ~ D5
+            # D1
+            w = ti.Vector(
+                [xsi, -xsi * eta1 * eta2, xsi * eta1 * (1.0 - eta2), xsi * eta1 * eta3]
+            )
+            r1_x, r2_x = w[0], w[3]
+            r1_y, r2_y = r1_x + w[1], w[2]
+            x = self.interplate_from_unit_panel_to_general(
+                r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
+            )
+            y = self.interplate_from_unit_panel_to_general(
+                r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
+            )
+            phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+            phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
+
+            jacobian = xsi * xsi * xsi * eta1 * eta1
+            integrand += (
+                self.grad_G_y(x=y, y=x, normal_y=normal_x, k=k, sqrt_n=sqrt_n) * phix * phiy
+            ) * weight * jacobian
+
+            # D2
+            w = ti.Vector(
+                [xsi, -xsi * eta1 * eta2 * eta3, xsi * eta1 * eta2 * (1.0 - eta3), xsi * eta1]
+            )
+            r1_x, r2_x = w[0], w[3]
+            r1_y, r2_y = r1_x + w[1], w[2]
+            x = self.interplate_from_unit_panel_to_general(
+                r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
+            )
+            y = self.interplate_from_unit_panel_to_general(
+                r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
+            )
+            phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+            phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
+
+            jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
+            integrand += (
+                self.grad_G_y(x=y, y=x, normal_y=normal_x, k=k, sqrt_n=sqrt_n) * phix * phiy
+            ) * weight * jacobian
+
+            # D3
+            w = ti.Vector(
+                [xsi * (1.0 - eta1 * eta2), xsi * eta1 * eta2, xsi * eta1 * eta2 * eta3, xsi * eta1 * (1.0 - eta2)]
+            )
+            r1_x, r2_x = w[0], w[3]
+            r1_y, r2_y = r1_x + w[1], w[2]
+            x = self.interplate_from_unit_panel_to_general(
+                r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
+            )
+            y = self.interplate_from_unit_panel_to_general(
+                r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
+            )
+            phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+            phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
+
+            jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
+            integrand += (
+                self.grad_G_y(x=y, y=x, normal_y=normal_x, k=k, sqrt_n=sqrt_n) * phix * phiy
+            ) * weight * jacobian
+
+            # D4
+            w = ti.Vector(
+                [xsi * (1.0 - eta1 * eta2 * eta3), xsi * eta1 * eta2 * eta3, xsi * eta1, xsi * eta1 * eta2 * (1.0 - eta3)]
+            )
+            r1_x, r2_x = w[0], w[3]
+            r1_y, r2_y = r1_x + w[1], w[2]
+
+            x = self.interplate_from_unit_panel_to_general(
+                r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
+            )
+            y = self.interplate_from_unit_panel_to_general(
+                r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
+            )
+            phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+            phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
+
+            jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
+            integrand += (
+                self.grad_G_y(x=y, y=x, normal_y=normal_x, k=k, sqrt_n=sqrt_n) * phix * phiy
+            ) * weight * jacobian
+
+            # D5
+            w = ti.Vector(
+                [xsi * (1.0 - eta1 * eta2 * eta3), xsi * eta1 * eta2 * eta3, xsi * eta1 * eta2, xsi * eta1 * (1.0 - eta2 * eta3)]
+            )
+            r1_x, r2_x = w[0], w[3]
+            r1_y, r2_y = r1_x + w[1], w[2]
+
+            x = self.interplate_from_unit_panel_to_general(
+                r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
+            )
+            y = self.interplate_from_unit_panel_to_general(
+                r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
+            )
+            phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+            phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
+            
+            jacobian = xsi * xsi * xsi * eta1 * eta1 * eta2
+            integrand += (
+                self.grad_G_y(x=y, y=x, normal_y=normal_x, k=k, sqrt_n=sqrt_n) * phix * phiy
+            ) * weight * jacobian
         
         return integrand
     
@@ -435,7 +407,7 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
         #                     )
         #                     integrand = self.integrate_on_two_panels(
         #                         k=k, sqrt_n=sqrt_n,
-        #                         triangle_x=global_i, triangle_y=global_j,
+        #                         panel_x=global_i, panel_y=global_j,
         #                         basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y,
         #                         panels_relation=panels_relation
         #                     )
@@ -458,6 +430,9 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
         basis_func_num_Neumann = self._BEM_manager.get_num_of_basis_functions_from_Q(self._Q_Neumann)
         basis_func_num_Dirichlet = self._BEM_manager.get_num_of_basis_functions_from_Q(self._Q_Dirichlet)
 
+        GaussQR2 = self._GaussQR * self._GaussQR
+        GaussQR4 = GaussQR2 * GaussQR2
+
         for local_I in range(self.num_of_panels_Dirichlet):
             for local_J in range(self.num_of_panels_Dirichlet):
                 global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
@@ -476,12 +451,20 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                             basis_func_index=basis_function_index_x,
                             panel_type=int(CellFluxType.DIRICHLET_TOBESOLVED)
                         )
-                        integrand = self.integrate_on_two_panels(
-                            k=k, sqrt_n=sqrt_n,
-                            triangle_x=global_i, triangle_y=global_j,
-                            basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y,
-                            panels_relation=panels_relation
-                        )
+
+                        integrand = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+                        for gauss_number in range(GaussQR4):
+                            iii = gauss_number // GaussQR2
+                            jjj = gauss_number % GaussQR2
+                            rands = ti.Vector([iii // self._GaussQR, iii % self._GaussQR, jjj // self._GaussQR, jjj % self._GaussQR], ti.i32)
+                            
+                            integrand += self.integrate_on_two_panels(
+                                rands=rands,
+                                k=k, sqrt_n=sqrt_n,
+                                panel_x=global_i, panel_y=global_j,
+                                basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y,
+                                panels_relation=panels_relation
+                            )
 
                         fy = self._BEM_manager.rhs_constructor.get_Neumann_boundary(global_j, basis_function_index_y)
 

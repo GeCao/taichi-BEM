@@ -6,6 +6,14 @@ import taichi as ti
 class AbstractRHSConstructor(ABC):
     def __init__(self, BEM_manager, *args, **kwargs,):
         self._BEM_manager = BEM_manager
+    
+    @ti.func
+    def interplate_from_unit_panel_to_general(self, r1, r2, x1, x2, x3):
+        return self._BEM_manager.interplate_from_unit_panel_to_general(r1, r2, x1, x2, x3)
+    
+    @ti.func
+    def shape_function(self, r1, r2, i: int):
+        return self._BEM_manager.shape_function(r1, r2, i)
 
     @property
     @abstractmethod
