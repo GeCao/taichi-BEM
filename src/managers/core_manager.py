@@ -2,7 +2,6 @@ import os, sys
 import taichi as ti
 import numpy as np
 import math
-import cv2
 
 from src.managers import LogManager, MeshManager, BEMManager
 

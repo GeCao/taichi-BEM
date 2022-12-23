@@ -326,4 +326,4 @@ class DoubleLayer2d(AbstractDoubleLayer):
                             if ti.static(self._n == 1):
                                 self._BEM_manager.rhs_constructor.get_rhs_vec()[local_charge_I + Neumann_offset_i] += multiplier * integrand * gy
                             elif ti.static(self._n == 2):
-                                self._BEM_manager.rhs_constructor.get_rhs_vec()[local_charge_I + Neumann_offset_i] += multiplier * ti.math.cmul(integrand, gy)
+                                self._BEM_manager.rhs_constructor.get_rhs_vec()[local_charge_I + Neumann_offset_i] += multiplier * ti.math.cmul(integrand, ti.math.cconj(gy))

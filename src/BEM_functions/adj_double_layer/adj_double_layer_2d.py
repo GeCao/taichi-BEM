@@ -30,11 +30,11 @@ class AdjDoubleLayer2d(AbstractAdjDoubleLayer):
         self._Kmat = ti.Vector.field(self._n, dtype=self._ti_dtype, shape=())
         assert(self.N_Neumann + self.M_Dirichlet > 0)
         # if self.N_Neumann > 0 and self.M_Dirichlet > 0:
-            # self._Kmat = ti.Vector.field(
-            #     self._n,
-            #     dtype=self._ti_dtype,
-            #     shape=(self.M_Dirichlet, self.N_Neumann)
-            # )
+        #     self._Kmat = ti.Vector.field(
+        #         self._n,
+        #         dtype=self._ti_dtype,
+        #         shape=(self.M_Dirichlet, self.N_Neumann)
+        #     )
     
     @ti.func
     def get_K_mat(self):
@@ -226,6 +226,8 @@ class AdjDoubleLayer2d(AbstractAdjDoubleLayer):
 
         #     basis_func_num_Neumann = self._BEM_manager.get_num_of_basis_functions_from_Q(self._Q_Neumann)
         #     basis_func_num_Dirichlet = self._BEM_manager.get_num_of_basis_functions_from_Q(self._Q_Dirichlet)
+
+        #     GaussQR2 = self._GaussQR * self._GaussQR
             
         #     for local_I in range(self.num_of_panels_Dirichlet):
         #         for local_J in range(self.num_of_panels_Neumann):
@@ -251,12 +253,20 @@ class AdjDoubleLayer2d(AbstractAdjDoubleLayer):
         #                         basis_func_index=basis_function_index_y,
         #                         panel_type=int(CellFluxType.NEUMANN_TOBESOLVED)
         #                     )
-        #                     integrand = self.integrate_on_two_panels(
-        #                         k=k, sqrt_n=sqrt_n,
-        #                         panel_x=global_i, panel_y=global_j,
-        #                         basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y,
-        #                         panels_relation=panels_relation
-        #                     )
+
+        #                     integrand = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+        #                     for gauss_number in range(GaussQR2):
+        #                         iii = gauss_number // self._GaussQR
+        #                         jjj = gauss_number % self._GaussQR
+        #                         rands = ti.Vector([iii, jjj], ti.i32)
+
+        #                         integrand += self.integrate_on_two_panels(
+        #                             rands=rands,
+        #                             k=k, sqrt_n=sqrt_n,
+        #                             panel_x=global_i, panel_y=global_j,
+        #                             basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y,
+        #                             panels_relation=panels_relation
+        #                         )
         #                     if local_charge_I >= 0 and local_charge_J >= 0:
         #                         self._Kmat[local_charge_I, local_charge_J] += integrand
     

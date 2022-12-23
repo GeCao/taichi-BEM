@@ -3,6 +3,7 @@ import numpy as np
 import math
 import taichi as ti
 import torch
+from scipy import special
 
 from src.BEM_functions.identity_layer import IdentityLayer2d, IdentityLayer3d
 from src.BEM_functions.single_layer import SingleLayer2d, SingleLayer3d
@@ -425,6 +426,20 @@ class BEMManager:
         if ti.static(self._dim == 2):
             if ti.static(self._kernel_type == int(KernelType.LAPLACE)):
                 Gxy.x = (1.0 / 2.0 / ti.math.pi) * ti.math.log(1.0 / distance)
+            elif ti.static(self._kernel_type == int(KernelType.HELMHOLTZ)):
+                hankel_input = k * distance
+                Hankel_output = special.h1vp(v=0.0, z=hankel_input, n=0)
+                Gxy = ti.math.cmul(
+                    ti.Vector([0.0, 1.0 / 4.0], self._ti_dtype),
+                    ti.Vector([Hankel_output.real, Hankel_output.imag], self._ti_dtype)
+                )
+            elif ti.static(self._kernel_type == int(KernelType.HELMHOLTZ_TRANSMISSION)):
+                hankel_input = k * sqrt_n * distance
+                Hankel_output = special.h1vp(v=0.0, z=hankel_input, n=0)
+                Gxy = ti.math.cmul(
+                    ti.Vector([0.0, 1.0 / 4.0], self._ti_dtype),
+                    ti.Vector([Hankel_output.real, Hankel_output.imag], self._ti_dtype)
+                )
         elif ti.static(self._dim == 3):
             if ti.static(self._kernel_type == int(KernelType.LAPLACE)):
                 Gxy.x = (1.0 / 4.0 / ti.math.pi) / distance
@@ -447,6 +462,20 @@ class BEMManager:
         if ti.static(self._dim == 2):
             if ti.static(self._kernel_type == int(KernelType.LAPLACE)):
                 grad_Gy.x = (1.0 / 2.0 / ti.math.pi) * ti.math.dot(direc, normal_y) / distance
+            elif ti.static(self._kernel_type == int(KernelType.HELMHOLTZ)):
+                hankel_input = k * distance
+                Hankel_output = special.h1vp(v=0.0, z=hankel_input, n=1)
+                grad_Gy = ti.math.cmul(
+                    ti.Vector([0.0, 1.0 / 4.0], self._ti_dtype),
+                    ti.Vector([Hankel_output.real, Hankel_output.imag], self._ti_dtype)
+                ) * k * ti.math.dot(-direc, normal_y)
+            elif ti.static(self._kernel_type == int(KernelType.HELMHOLTZ_TRANSMISSION)):
+                hankel_input = k * sqrt_n * distance
+                Hankel_output = special.h1vp(v=0.0, z=hankel_input, n=1)
+                grad_Gy = ti.math.cmul(
+                    ti.Vector([0.0, 1.0 / 4.0], self._ti_dtype),
+                    ti.Vector([Hankel_output.real, Hankel_output.imag], self._ti_dtype)
+                ) * k * sqrt_n * ti.math.dot(-direc, normal_y)
         elif ti.static(self._dim == 3):
             if ti.static(self._kernel_type == int(KernelType.LAPLACE)):
                 grad_Gy.x = (1.0 / 4.0 / ti.math.pi) * ti.math.dot(direc, normal_y) / (distance * distance)
@@ -862,7 +891,7 @@ class BEMManager:
             self.assemble_rhs()  # 0.5I - M_O
             # ni scope
             self.matrix_layer_forward(k=self._k, sqrt_n=self._sqrt_ni)
-            self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=-1.0)  # Reduce P_PLUS_I
+            self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=1.0)  # Reduce P_PLUS_I
         else:
             self.matrix_layer_forward(k=self._k)
             self.assemble_matA(assemble_type=int(AssembleType.ADD_M), multiplier=-1.0)  # Reduce M
@@ -875,6 +904,14 @@ class BEMManager:
         # Post process
         self.compute_analytical_raw_solved()
         self.splat_u_from_raw_solved_to_vertices()
+
+        # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # torch_raw_solved = (self.raw_solved.to_torch().to(device))
+        # torch_raw_analytical_solved = (self.raw_analytical_solved.to_torch().to(device))
+        # torch_raw_diff = (torch_raw_solved - torch_raw_analytical_solved).abs()
+        # print("raw solved: max = {}, min = {}, mean = {}".format(torch_raw_solved.max(), torch_raw_solved.min(), torch_raw_solved.mean()))
+        # print("raw analytical solved: max = {}, min = {}, mean = {}".format(torch_raw_analytical_solved.max(), torch_raw_analytical_solved.min(), torch_raw_analytical_solved.mean()))
+        # print("raw diff solved: max = {}, min = {}, mean = {}".format(torch_raw_diff.max(), torch_raw_diff.min(), torch_raw_diff.mean()))
 
         # Prepare for draw your color on GUI
         self.compute_color()

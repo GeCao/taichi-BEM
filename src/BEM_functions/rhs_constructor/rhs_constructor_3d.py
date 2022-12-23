@@ -202,6 +202,7 @@ class RHSConstructor3d(AbstractRHSConstructor):
     @ti.func
     def integrate_on_single_triangle(
         self,
+        rands: ti.types.vector(2, int),
         panel_x: int,
         basis_function_index_x: int,
         basis_function_index_y: int,
@@ -231,26 +232,23 @@ class RHSConstructor3d(AbstractRHSConstructor):
 
         area_x = self._BEM_manager.get_panel_area(panel_x)
 
-        GaussQR2 = self._GaussQR * self._GaussQR
-        
-        for iii in range(GaussQR2):
-            # Generate number(r1, r2)
-            r1_x = self._BEM_manager.Gauss_points_1d[iii // self._GaussQR]
-            r2_x = self._BEM_manager.Gauss_points_1d[iii % self._GaussQR] * r1_x
+        # Generate number(r1, r2)
+        r1_x = self._BEM_manager.Gauss_points_1d[rands.x]
+        r2_x = self._BEM_manager.Gauss_points_1d[rands.y] * r1_x
 
-            # Scale your weight
-            weight_x = self._BEM_manager.Gauss_weights_1d[iii // self._GaussQR] * self._BEM_manager.Gauss_weights_1d[iii % self._GaussQR] * (area_x * 2.0)
-            # Get your final weight
-            weight = weight_x
+        # Scale your weight
+        weight_x = self._BEM_manager.Gauss_weights_1d[rands.x] * self._BEM_manager.Gauss_weights_1d[rands.y] * (area_x * 2.0)
+        # Get your final weight
+        weight = weight_x
 
-            jacobian = r1_x
+        jacobian = r1_x
 
-            phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-            phiy = self.shape_function(r1_x, r2_x, i=basis_function_index_y)
+        phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+        phiy = self.shape_function(r1_x, r2_x, i=basis_function_index_y)
 
-            integrand.x += (
-                phix * phiy
-            ) * weight * jacobian
+        integrand.x += (
+            phix * phiy
+        ) * weight * jacobian
         
         return integrand
     
@@ -260,6 +258,8 @@ class RHSConstructor3d(AbstractRHSConstructor):
         basis_func_num_Dirichlet = self._BEM_manager.get_num_of_basis_functions_from_Q(self._Q_Dirichlet)
         Neumann_offset_i = self._BEM_manager.get_Neumann_offset_i()
         Dirichlet_offset_i = self._BEM_manager.get_Dirichlet_offset_i()
+
+        GaussQR2 = self._GaussQR * self._GaussQR
 
         if ti.static(self.N_Neumann > 0):
             # += 0.5I * g
@@ -284,10 +284,17 @@ class RHSConstructor3d(AbstractRHSConstructor):
                             panel_type=int(CellFluxType.NEUMANN_TOBESOLVED)
                         )
                         
-                        integrand = self.integrate_on_single_triangle(
-                            panel_x=global_i,
-                            basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y
-                        )
+                        integrand = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+                        for gauss_number in range(GaussQR2):
+                            iii = gauss_number // self._GaussQR
+                            jjj = gauss_number % self._GaussQR
+                            rands = ti.Vector([iii, jjj], ti.i32)
+
+                            integrand += self.integrate_on_single_triangle(
+                                rands=rands,
+                                panel_x=global_i,
+                                basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y
+                            )
 
                         gx = self._Dirichlet_boundary[global_charge_j]
 
@@ -295,7 +302,7 @@ class RHSConstructor3d(AbstractRHSConstructor):
                             if ti.static(self._n == 1):
                                 self._rhs_vec[local_charge_I + Neumann_offset_i] += multiplier * integrand * gx
                             elif ti.static(self._n == 2):
-                                self._rhs_vec[local_charge_I + Neumann_offset_i] += multiplier * ti.math.cmul(integrand, gx)
+                                self._rhs_vec[local_charge_I + Neumann_offset_i] += multiplier * ti.math.cmul(integrand, ti.math.cconj(gx))
             
         if ti.static(self.M_Dirichlet > 0):
             # += 0.5I * f
@@ -320,10 +327,17 @@ class RHSConstructor3d(AbstractRHSConstructor):
                             panel_type=int(CellFluxType.DIRICHLET_TOBESOLVED)
                         )
 
-                        integrand = self.integrate_on_single_triangle(
-                            panel_x=global_i,
-                            basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y
-                        )
+                        integrand = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+                        for gauss_number in range(GaussQR2):
+                            iii = gauss_number // self._GaussQR
+                            jjj = gauss_number % self._GaussQR
+                            rands = ti.Vector([iii, jjj], ti.i32)
+
+                            integrand += self.integrate_on_single_triangle(
+                                rands=rands,
+                                panel_x=global_i,
+                                basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y
+                            )
 
                         fx = self._Neumann_boundary[global_charge_j]
 
@@ -331,7 +345,7 @@ class RHSConstructor3d(AbstractRHSConstructor):
                             if ti.static(self._n == 1):
                                 self._rhs_vec[local_charge_I + Dirichlet_offset_i] += multiplier * integrand * fx
                             elif ti.static(self._n == 2):
-                                self._rhs_vec[local_charge_I + Dirichlet_offset_i] += multiplier * ti.math.cmul(integrand, fx)
+                                self._rhs_vec[local_charge_I + Dirichlet_offset_i] += multiplier * ti.math.cmul(integrand, ti.math.cconj(fx))
     
     def multiply_M_to_vector(self, k: float, sqrt_n: float, multiplier: float):
         if self.N_Neumann > 0:

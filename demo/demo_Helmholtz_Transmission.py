@@ -52,8 +52,8 @@ def main(args):
         b2 = 0.0
         k = args.k
         # Compute Inner trace
-        expd_vec = ti.math.cexp(ti.Vector([0.0, x[2] * k * sqrt_n]))
-        vec_result = (a1 + b1 * x[0]) * (a2 + b2 * x[1]) * expd_vec
+        expd_vec = ti.math.cexp(ti.Vector([0.0, x[0] * k * sqrt_n]))
+        vec_result = (a1 + b1 * x[2]) * (a2 + b2 * x[1]) * expd_vec
 
         return vec_result
     
@@ -65,10 +65,10 @@ def main(args):
         b2 = 0.0
         k = args.k
 
-        expd_vec = ti.math.cexp(ti.Vector([0.0, x[2] * k * sqrt_n]))
-        du_dx1 = b1 * (a2 + b2 * x[1]) * expd_vec
-        du_dx2 = (a1 + b1 * x[0]) * b2 * expd_vec
-        du_dx3 = (a1 + b1 * x[0]) * (a2 + b2 * x[1]) * ti.math.cmul(
+        expd_vec = ti.math.cexp(ti.Vector([0.0, x[0] * k * sqrt_n]))
+        du_dx3 = b1 * (a2 + b2 * x[1]) * expd_vec
+        du_dx2 = (a1 + b1 * x[2]) * b2 * expd_vec
+        du_dx1 = (a1 + b1 * x[2]) * (a2 + b2 * x[1]) * ti.math.cmul(
             ti.Vector([0.0, k * sqrt_n]),
             expd_vec
         )
@@ -99,7 +99,7 @@ if __name__ == '__main__':
         "--object",
         type=str,
         default="sphere",
-        choices=["sphere", "cube", "hemisphere", "stanford_bunny"],
+        choices=["sphere", "cube", "hemisphere", "stanford_bunny", "suzan", "fined_sphere", "analytical_sphere"],
         help="dimension: 2D or 3D",
     )
 
@@ -127,7 +127,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--k",
         type=float,
-        default=1,
+        default=5,
         help="wavenumber",
     )
 

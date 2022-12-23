@@ -23,7 +23,7 @@ from src.managers import CoreManager
 ti.init(arch=ti.gpu, kernel_profiler=True)
 
 N = 10
-wave_numbers = [1.0 / N + i * 1.0 / N for i in range(10 * N)]
+wave_numbers = [1.0 / N + i * 1.0 / N for i in range(15 * N)]
 A1_inv_norms = [0.0 for i in range(len(wave_numbers))]
 A2_inv_norms = [0.0 for i in range(len(wave_numbers))]
 A1_augmented_inv_norms = [0.0 for i in range(len(wave_numbers))]
@@ -211,7 +211,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--object",
         type=str,
-        default="fined_sphere",
+        default="analytical_sphere",
         choices=["sphere", "cube", "hemisphere", "stanford_bunny", "analytical_sphere", "fined_sphere"],
         help="dimension: 2D or 3D",
     )

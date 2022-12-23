@@ -45,7 +45,7 @@ def main(args):
     # Laplacian(u) = 0,
     # With u(x) = (a1 + b1x1)(a2 + b2x2)exp(ıκx3) as the analytical result.
     @ti.func
-    def analytical_function_Dirichlet(x):
+    def analytical_function_Dirichlet_3d(x):
         a1 = 0.5
         b1 = 0.5
         a2 = 0.5
@@ -56,7 +56,7 @@ def main(args):
         return vec_result
     
     @ti.func
-    def analytical_function_Neumann(x, normal_x):
+    def analytical_function_Neumann_3d(x, normal_x):
         a1 = 0.5
         b1 = 0.5
         a2 = 0.5
@@ -69,10 +69,36 @@ def main(args):
         vec_result = du_dx1 * normal_x.x + du_dx2 * normal_x.y + du_dx3 * normal_x.z
         return vec_result
     
-    core_manager.initialization(
-        analytical_function_Dirichlet=analytical_function_Dirichlet,
-        analytical_function_Neumann=analytical_function_Neumann
-    )
+    @ti.func
+    def analytical_function_Dirichlet_2d(x):
+        a1 = 0.5
+        b1 = 0.5
+        k = args.k
+        expd_vec = ti.math.cexp(ti.Vector([0.0, x[1] * k]))
+        vec_result = (a1 + b1 * x[0]) * expd_vec
+        return vec_result
+    
+    @ti.func
+    def analytical_function_Neumann_2d(x, normal_x):
+        a1 = 0.5
+        b1 = 0.5
+        k = args.k
+        expd_vec = ti.math.cexp(ti.Vector([0.0, x[1] * k]))
+        du_dx1 = b1 * expd_vec
+        du_dx2 = (a1 + b1 * x[0]) * ti.Vector([-expd_vec.y, expd_vec.x]) * k
+        vec_result = du_dx1 * normal_x.x + du_dx2 * normal_x.y
+        return vec_result
+    
+    if simulation_parameters["dim"] == 2:
+        core_manager.initialization(
+            analytical_function_Dirichlet=analytical_function_Dirichlet_2d,
+            analytical_function_Neumann=analytical_function_Neumann_2d
+        )
+    elif simulation_parameters["dim"] == 3:
+        core_manager.initialization(
+            analytical_function_Dirichlet=analytical_function_Dirichlet_3d,
+            analytical_function_Neumann=analytical_function_Neumann_3d
+        )
     core_manager.run()
     core_manager.kill()
 
@@ -93,7 +119,7 @@ if __name__ == '__main__':
         "--object",
         type=str,
         default="sphere",
-        choices=["sphere", "cube", "hemisphere", "stanford_bunny"],
+        choices=["sphere", "cube", "hemisphere", "stanford_bunny", "suzan"],
         help="dimension: 2D or 3D",
     )
 

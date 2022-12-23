@@ -479,4 +479,4 @@ class SingleLayer3d(AbstractSingleLayer):
                             if ti.static(self._n == 1):
                                 self._BEM_manager.rhs_constructor.get_rhs_vec()[local_charge_I + Neumann_offset_i] += multiplier * integrand * fy
                             elif ti.static(self._n == 2):
-                                self._BEM_manager.rhs_constructor.get_rhs_vec()[local_charge_I + Neumann_offset_i] += multiplier * ti.math.cmul(integrand, fy)
+                                self._BEM_manager.rhs_constructor.get_rhs_vec()[local_charge_I + Neumann_offset_i] += multiplier * ti.math.cmul(integrand, ti.math.cconj(fy))

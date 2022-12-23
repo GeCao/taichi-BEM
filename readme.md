@@ -2,14 +2,14 @@
 
 ### ----------Analytical(Left)----Solved(Middle)----Difference(Right)
 
-### Laplace Equation
+### Laplace Equation (2D)
 <img src="demo/Laplace_solved_Neumann_2d.png" height="270">
 
-### Laplace Equation
+### Laplace Equation (3D)
 <img src="demo/Laplace_solved_Neumann.png" height="270">
 
-### Helmholtz Equation
-<img src="demo/Helmholtz_solved_Dirichlet.png" height="270">
+### Helmholtz Equation (3D)
+<img src="demo/Helmholtz_solved_Neumann_stanford_bunny.png" height="270">
 
 ### Helmholtz Transmission Equation
 <img src="demo/HelmholtzTransmission_solved_Full.png" height="270">
@@ -17,24 +17,25 @@
 ### Norm analysis (Still Working on! 👨‍💻)
 * The sample step of wave number is 1/30, which implies for wavenumbers between [16, 18], 60 points are sampled.
 * Precious matters, float64 shows more stability than float32 for operator AI (Somehow not very obvious for operator AII).
-### The norm of AI (Left) and Augmented AI (Right)
-* Although I forgot to put them together into one figure, it is still obvious the right figure (Augmented) averagely 10 times smaller, as well as holding shorted peaks.
 
-<img src="demo/A1_plot_Neumann1_Dirichlet1.png" height="192"> <img src="demo/A1_plot_augment_1_1.png" height="192">
+### The norm of A (Left) and Augmented A (Right)
 
-### The norm of AII (Left) and Augmented AI (Right)
-* Similar as above
+<img src="demo/Physical_A1A2_plot_1_1.png" height="192"> <img src="demo/Physical_Augment_A1A2_plot_1_1.png" height="192">
 
-<img src="demo/A2_plot_Neumann1_Dirichlet1.png" height="192"> <img src="demo/A2_plot_augment_1_1.png" height="192">
+<img src="demo/NonPhysical_A1A2_plot_1_1.png" height="192"> <img src="demo/NonPhysical_Augment_A1A2_plot_1_1.png" height="192">
 
 ### How to run the code
 
 ```bash
 cd taichi-BEM
+conda create -n ti-BEM python=3.8
+conda activate ti-BEM
+conda install pytorch torchvision torchaudio pytorch-cuda=11.6 -c pytorch -c nvidia
 pip install -r requirements.txt
+
 cd demo
 python demo_Laplace.py --boundary Dirichlet --dim 3
-python demo_Helmholtz.py --boundary Neumann --k 3 --dim 3
+python demo_Helmholtz.py --boundary Neumann --k 3 --dim 3 --object stanford_bunny
 python demo_Helmholtz_Transmission.py --boundary Full --k 5 --dim 3
 ```
 

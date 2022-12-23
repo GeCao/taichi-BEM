@@ -45,6 +45,7 @@ class IdentityLayer2d(AbstractIdentityLayer):
     @ti.func
     def integrate_on_single_panel(
         self,
+        rands: ti.types.vector(1, int),
         panel_x: int,
         basis_function_index_x: int,
         basis_function_index_y: int,
@@ -92,29 +93,26 @@ class IdentityLayer2d(AbstractIdentityLayer):
 
         area_x = self._BEM_manager.get_panel_area(panel_x)
         
-        for gauss_number in range(self._GaussQR):
-            iii = gauss_number
+        # Generate number(xsi,)
+        xsi = self._BEM_manager.Gauss_points_1d[rands.x]
 
-            # Generate number(xsi,)
-            xsi = self._BEM_manager.Gauss_points_1d[iii]
+        # Scale your weight
+        weight_x = self._BEM_manager.Gauss_weights_1d[rands.x]* (area_x * 1.0)
+        # Get your final weight
+        weight = weight_x
 
-            # Scale your weight
-            weight_x = self._BEM_manager.Gauss_weights_1d[iii]* (area_x * 1.0)
-            # Get your final weight
-            weight = weight_x
+        # Generate number(r1, r2) for panel x
+        r1_x = xsi
 
-            # Generate number(r1, r2) for panel x
-            r1_x = xsi
+        # Get your jacobian
+        jacobian = 1.0
 
-            # Get your jacobian
-            jacobian = 1.0
+        phix = self.shape_function(r1_x, -1.0, i=basis_function_index_x)
+        phiy = self.shape_function(r1_x, -1.0, i=basis_function_index_y)
 
-            phix = self.shape_function(r1_x, -1.0, i=basis_function_index_x)
-            phiy = self.shape_function(r1_x, -1.0, i=basis_function_index_y)
-
-            integrand.x += (
-                phix * phiy
-            ) * weight * jacobian
+        integrand.x += (
+            phix * phiy
+        ) * weight * jacobian
         
         return integrand
     
@@ -149,10 +147,14 @@ class IdentityLayer2d(AbstractIdentityLayer):
                             panel_type=int(CellFluxType.DIRICHLET_TOBESOLVED)
                         )
 
-                        integrand = self.integrate_on_single_panel(
-                            panel_x=global_i,
-                            basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y
-                        )
+                        integrand = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+                        for iii in range(self._GaussQR):
+                            rands = ti.Vector([iii], ti.i32)
+
+                            integrand += self.integrate_on_single_panel(
+                                panel_x=global_i,
+                                basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y
+                            )
 
                         if local_charge_I >= 0 and local_charge_J >= 0:
                             self._BEM_manager.get_mat_A()[local_charge_I + self._Neumann_offset_i, local_charge_J + self._Dirichlet_offset_j] += mutiplier * integrand
@@ -189,10 +191,14 @@ class IdentityLayer2d(AbstractIdentityLayer):
                             panel_type=int(CellFluxType.DIRICHLET_TOBESOLVED)
                         )
 
-                        integrand = self.integrate_on_single_panel(
-                            panel_x=global_i,
-                            basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y
-                        )
+                        integrand = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+                        for iii in range(self._GaussQR):
+                            rands = ti.Vector([iii], ti.i32)
+                            
+                            integrand += self.integrate_on_single_panel(
+                                panel_x=global_i,
+                                basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y
+                            )
 
                         if local_charge_I >= 0 and local_charge_J >= 0:
                             self._BEM_manager.get_mat_P()[local_charge_I + self._Neumann_offset_i, local_charge_J + self._Dirichlet_offset_j] += mutiplier * integrand

@@ -99,7 +99,7 @@ if __name__ == '__main__':
         "--object",
         type=str,
         default="sphere",
-        choices=["sphere", "cube", "hemisphere", "stanford_bunny", "disk"],
+        choices=["sphere", "cube", "hemisphere", "stanford_bunny", "disk", "suzan"],
         help="dimension: 2D or 3D",
     )
 

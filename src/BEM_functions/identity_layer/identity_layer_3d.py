@@ -45,6 +45,7 @@ class IdentityLayer3d(AbstractIdentityLayer):
     @ti.func
     def integrate_on_single_panel(
         self,
+        rands: ti.types.vector(2, int),
         panel_x: int,
         basis_function_index_x: int,
         basis_function_index_y: int,
@@ -119,31 +120,28 @@ class IdentityLayer3d(AbstractIdentityLayer):
 
         GaussQR2 = self._GaussQR * self._GaussQR
         
-        for gauss_number in range(GaussQR2):
-            iii = gauss_number
+        # Generate number(xsi, eta1)
+        xsi = self._BEM_manager.Gauss_points_1d[rands.x]
+        eta1 = self._BEM_manager.Gauss_points_1d[rands.y]
 
-            # Generate number(xsi, eta1, eta2, eta3)
-            xsi = self._BEM_manager.Gauss_points_1d[iii // self._GaussQR]
-            eta1 = self._BEM_manager.Gauss_points_1d[iii % self._GaussQR]
+        # Scale your weight
+        weight_x = self._BEM_manager.Gauss_weights_1d[rands.x] * self._BEM_manager.Gauss_weights_1d[rands.y] * (area_x * 2.0)
+        # Get your final weight
+        weight = weight_x
 
-            # Scale your weight
-            weight_x = self._BEM_manager.Gauss_weights_1d[iii // self._GaussQR] * self._BEM_manager.Gauss_weights_1d[iii % self._GaussQR] * (area_x * 2.0)
-            # Get your final weight
-            weight = weight_x
+        # Generate number(r1, r2) for panel x
+        r1_x = xsi
+        r2_x = eta1 * r1_x
 
-            # Generate number(r1, r2) for panel x
-            r1_x = xsi
-            r2_x = eta1 * r1_x
+        # Get your jacobian
+        jacobian = r1_x
 
-            # Get your jacobian
-            jacobian = r1_x
+        phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+        phiy = self.shape_function(r1_x, r2_x, i=basis_function_index_y)
 
-            phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-            phiy = self.shape_function(r1_x, r2_x, i=basis_function_index_y)
-
-            integrand.x += (
-                phix * phiy
-            ) * weight * jacobian
+        integrand.x += (
+            phix * phiy
+        ) * weight * jacobian
         
         return integrand
     
@@ -156,6 +154,9 @@ class IdentityLayer3d(AbstractIdentityLayer):
         if ti.static(self._BEM_manager._is_transmission > 0):
             basis_func_num_Neumann = self._BEM_manager.get_num_of_basis_functions_from_Q(self._Q_Neumann)
             basis_func_num_Dirichlet = self._BEM_manager.get_num_of_basis_functions_from_Q(self._Q_Dirichlet)
+
+            GaussQR2 = self._GaussQR * self._GaussQR
+
             for local_I in range(self.num_of_panels):
                 global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
                 for ii in range(basis_func_num_Neumann):
@@ -178,10 +179,17 @@ class IdentityLayer3d(AbstractIdentityLayer):
                             panel_type=int(CellFluxType.DIRICHLET_TOBESOLVED)
                         )
 
-                        integrand = self.integrate_on_single_panel(
-                            panel_x=global_i,
-                            basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y
-                        )
+                        integrand = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+                        for gauss_number in range(GaussQR2):
+                            iii = gauss_number // self._GaussQR
+                            jjj = gauss_number % self._GaussQR
+                            rands = ti.Vector([iii, jjj], ti.i32)
+
+                            integrand += self.integrate_on_single_panel(
+                                rands=rands,
+                                panel_x=global_i,
+                                basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y
+                            )
 
                         if local_charge_I >= 0 and local_charge_J >= 0:
                             self._BEM_manager.get_mat_A()[local_charge_I + self._Neumann_offset_i, local_charge_J + self._Dirichlet_offset_j] += mutiplier * integrand
@@ -197,6 +205,9 @@ class IdentityLayer3d(AbstractIdentityLayer):
         if ti.static(self._BEM_manager._is_transmission > 0):
             basis_func_num_Neumann = self._BEM_manager.get_num_of_basis_functions_from_Q(self._Q_Neumann)
             basis_func_num_Dirichlet = self._BEM_manager.get_num_of_basis_functions_from_Q(self._Q_Dirichlet)
+
+            GaussQR2 = self._GaussQR * self._GaussQR
+            
             for local_I in range(self.num_of_panels):
                 global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
                 for ii in range(basis_func_num_Neumann):
@@ -219,10 +230,17 @@ class IdentityLayer3d(AbstractIdentityLayer):
                             panel_type=int(CellFluxType.DIRICHLET_TOBESOLVED)
                         )
 
-                        integrand = self.integrate_on_single_panel(
-                            panel_x=global_i,
-                            basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y
-                        )
+                        integrand = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+                        for gauss_number in range(GaussQR2):
+                            iii = gauss_number // self._GaussQR
+                            jjj = gauss_number % self._GaussQR
+                            rands = ti.Vector([iii, jjj], ti.i32)
+
+                            integrand += self.integrate_on_single_panel(
+                                rands=rands,
+                                panel_x=global_i,
+                                basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y
+                            )
 
                         if local_charge_I >= 0 and local_charge_J >= 0:
                             self._BEM_manager.get_mat_P()[local_charge_I + self._Neumann_offset_i, local_charge_J + self._Dirichlet_offset_j] += mutiplier * integrand
