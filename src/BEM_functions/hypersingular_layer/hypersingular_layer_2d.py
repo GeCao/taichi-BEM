@@ -63,6 +63,7 @@ class HypersingularLayer2d(AbstractHypersingularLayer):
     def integrate_on_two_panels(
         self,
         rands: ti.types.vector(2, int),
+        scope_type: int,
         k: float,
         sqrt_n: float,
         panel_x: int,
@@ -115,14 +116,14 @@ class HypersingularLayer2d(AbstractHypersingularLayer):
         x1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_x + 0)
         x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_x + 1)
         area_x = self._BEM_manager.get_panel_area(panel_x)
-        normal_x = self._BEM_manager.get_panel_normal(panel_x)
+        normal_x = self._BEM_manager.get_panel_normal(panel_x, scope_type=scope_type)
         phi1_x = 1.0 * (basis_function_index_x == 0)
         phi2_x = 1.0 * (basis_function_index_x == 1)
 
         y1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_y + 0)
         y2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_y + 1)
         area_y = self._BEM_manager.get_panel_area(panel_y)
-        normal_y = self._BEM_manager.get_panel_normal(panel_y)
+        normal_y = self._BEM_manager.get_panel_normal(panel_y, scope_type=scope_type)
         phi1_y = 1.0 * (basis_function_index_y == 0)
         phi2_y = 1.0 * (basis_function_index_y == 1)
 
@@ -249,7 +250,7 @@ class HypersingularLayer2d(AbstractHypersingularLayer):
         return integrand
     
     @ti.kernel
-    def forward(self, k: float, sqrt_n: float):
+    def forward(self, scope_type: int, k: float, sqrt_n: float):
         """
         Compute BIO matix W_mat
         Please note other than other three BIOs, this BIO has a negtive sign
@@ -295,7 +296,7 @@ class HypersingularLayer2d(AbstractHypersingularLayer):
                                 
                                 integrand += self.integrate_on_two_panels(
                                     rands=rands,
-                                    k=k, sqrt_n=sqrt_n,
+                                    scope_type=scope_type, k=k, sqrt_n=sqrt_n,
                                     panel_x=global_i, panel_y=global_j,
                                     basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y,
                                     panels_relation=panels_relation
@@ -304,7 +305,7 @@ class HypersingularLayer2d(AbstractHypersingularLayer):
                                 self._Wmat[local_charge_I, local_charge_J] += integrand
     
     @ti.kernel
-    def apply_W_dot_vert_boundary(self, k: float, sqrt_n: float, multiplier: float):
+    def apply_W_dot_D_boundary(self, scope_type: int, k: float, sqrt_n: float, multiplier: float):
         """
         If you are applying Neumann boundary on panels,
         You need to solve a linear system equations to get Dirichlet vertices,
@@ -348,7 +349,7 @@ class HypersingularLayer2d(AbstractHypersingularLayer):
 
                             integrand += self.integrate_on_two_panels(
                                 rands=rands,
-                                k=k, sqrt_n=sqrt_n,
+                                scope_type=scope_type, k=k, sqrt_n=sqrt_n,
                                 panel_x=global_i, panel_y=global_j,
                                 basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y,
                                 panels_relation=panels_relation

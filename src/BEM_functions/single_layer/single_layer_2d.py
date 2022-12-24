@@ -56,6 +56,7 @@ class SingleLayer2d(AbstractSingleLayer):
     def integrate_on_two_panels(
         self,
         rands: ti.types.vector(2, int),
+        scope_type: int,
         k: float,
         sqrt_n: float,
         panel_x: int,
@@ -108,12 +109,10 @@ class SingleLayer2d(AbstractSingleLayer):
         x1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_x + 0)
         x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_x + 1)
         area_x = self._BEM_manager.get_panel_area(panel_x)
-        normal_x = self._BEM_manager.get_panel_normal(panel_x)
 
         y1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_y + 0)
         y2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_y + 1)
         area_y = self._BEM_manager.get_panel_area(panel_y)
-        normal_y = self._BEM_manager.get_panel_normal(panel_y)
 
         # Generate number(xsi, eta)
         xsi = self._BEM_manager.Gauss_points_1d[rands.x]
@@ -215,7 +214,7 @@ class SingleLayer2d(AbstractSingleLayer):
         return integrand
     
     @ti.kernel
-    def forward(self, k: float, sqrt_n: float):
+    def forward(self, scope_type: int, k: float, sqrt_n: float):
         """
         Compute BIO matix V_mat
         """
@@ -260,7 +259,7 @@ class SingleLayer2d(AbstractSingleLayer):
 
                                 integrand += self.integrate_on_two_panels(
                                     rands=rands,
-                                    k=k, sqrt_n=sqrt_n,
+                                    scope_type=scope_type, k=k, sqrt_n=sqrt_n,
                                     panel_x=global_i, panel_y=global_j,
                                     basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y,
                                     panels_relation=panels_relation
@@ -270,7 +269,7 @@ class SingleLayer2d(AbstractSingleLayer):
                                 self._Vmat[local_charge_I, local_charge_J] += integrand
     
     @ti.kernel
-    def apply_V_dot_panel_boundary(self, k: float, sqrt_n: float, multiplier: float):
+    def apply_V_dot_N_boundary(self, scope_type: int, k: float, sqrt_n: float, multiplier: float):
         """
         If you are applying Dirichlet boundary on vertices,
         You need to solve a linear system equations to get Neumann panels,
@@ -314,7 +313,7 @@ class SingleLayer2d(AbstractSingleLayer):
 
                             integrand += self.integrate_on_two_panels(
                                 rands=rands,
-                                k=k, sqrt_n=sqrt_n,
+                                scope_type=scope_type, k=k, sqrt_n=sqrt_n,
                                 panel_x=global_i, panel_y=global_j,
                                 basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y,
                                 panels_relation=panels_relation

@@ -11,7 +11,7 @@ from src.BEM_functions.double_layer import DoubleLayer2d, DoubleLayer3d
 from src.BEM_functions.adj_double_layer import AdjDoubleLayer2d, AdjDoubleLayer3d
 from src.BEM_functions.hypersingular_layer import HypersingularLayer2d, HypersingularLayer3d
 from src.BEM_functions.rhs_constructor import RHSConstructor2d, RHSConstructor3d
-from src.BEM_functions.utils import CellFluxType, VertAttachType, KernelType, PanelsRelation, AssembleType
+from src.BEM_functions.utils import CellFluxType, VertAttachType, KernelType, PanelsRelation, AssembleType, ScopeType
 from src.BEM_functions.utils import get_gaussion_integration_points_and_weights, warp_tensor, unwarp_tensor
 
 
@@ -67,6 +67,12 @@ class BEMManager:
         self._dim = self._simulation_parameters['dim']
         self._Q = self._dim
         self._GaussQR = self._simulation_parameters['GaussQR']
+
+        self._scope_type = int(ScopeType.NOT_DEFINED)
+        if self._simulation_parameters["scope"] == "Interior":
+            self._scope_type = int(ScopeType.INTERIOR)
+        elif self._simulation_parameters["scope"] == "Exterior":
+            self._scope_type = int(ScopeType.EXTERIOR)
 
         self.initialized = False
 
@@ -312,12 +318,20 @@ class BEMManager:
         return self._core_manager._mesh_manager.get_panel_areas()[panel_area_index]
     
     @ti.func
-    def get_panel_normal(self, panel_normal_index):
-        return self._core_manager._mesh_manager.get_panel_normals()[panel_normal_index]
+    def get_panel_normal(self, panel_normal_index, scope_type: int):
+        panel_normal = self._core_manager._mesh_manager.get_panel_normals()[panel_normal_index]
+        if scope_type == int(ScopeType.EXTERIOR):
+            panel_normal = -panel_normal
+        
+        return panel_normal
 
     @ti.func
-    def get_vert_normal(self, vert_index):
-        return self._core_manager._mesh_manager.get_vert_normals()[vert_index]
+    def get_vert_normal(self, vert_index, scope_type: int):
+        vert_normal = self._core_manager._mesh_manager.get_vert_normals()[vert_index]
+        if scope_type == int(ScopeType.EXTERIOR):
+            vert_normal = -vert_normal
+        
+        return vert_normal
     
     @ti.func
     def get_vert_area(self, vert_index):
@@ -370,6 +384,13 @@ class BEMManager:
     @ti.func
     def get_Neumann_offset_j(self):
         return self._Neumann_offset_j
+    
+    @ti.func
+    def get_scope_type(self):
+        return self._scope_type
+    
+    def set_scope_type(self, scope_type):
+        self._scope_type = scope_type
     
     @ti.func
     def shape_function(self, r1, r2, i: int):
@@ -587,11 +608,11 @@ class BEMManager:
                 self._mat_A[I + self._Neumann_offset_i, J + self._Dirichlet_offset_j] += multiplier * self.double_layer._Kmat[I, J]
         
         if ti.static(self.M_Dirichlet * self.N_Neumann > 0):
-            for I in range(self.N_Neumann):
-                for J in range(self.M_Dirichlet):
-                    self._mat_A[J + self._Dirichlet_offset_i, I + self._Neumann_offset_j] += -multiplier * self.double_layer._Kmat[I, J]
-            # for I, J in self.adj_double_layer._Kmat:
-            #     self._mat_A[I + self._Dirichlet_offset_i, J + self._Neumann_offset_j] += -multiplier * self.adj_double_layer._Kmat[I, J]
+            # for I in range(self.N_Neumann):
+            #     for J in range(self.M_Dirichlet):
+            #         self._mat_A[J + self._Dirichlet_offset_i, I + self._Neumann_offset_j] += -multiplier * (-self.double_layer._Kmat[I, J])
+            for I, J in self.adj_double_layer._Kmat:
+                self._mat_A[I + self._Dirichlet_offset_i, J + self._Neumann_offset_j] += -multiplier * self.adj_double_layer._Kmat[I, J]
         
         if ti.static(self.M_Dirichlet > 0):
             for I, J in self.hypersingular_layer._Wmat:
@@ -617,6 +638,8 @@ class BEMManager:
     @ti.kernel
     def assemble_rhs(self):
         if ti.static(self._is_transmission):
+            ti.static_assert(self.get_scope_type() == int(ScopeType.EXTERIOR))
+
             self.rhs.fill(0)
             for I, J in self._mat_A:
                 if ti.static(self._n == 1):
@@ -634,9 +657,30 @@ class BEMManager:
         self.raw_analytical_solved.fill(0)
 
         if ti.static(self._is_transmission > 0):
-            # rhs = P_O^- * f       
-            # for I in self.raw_analytical_solved:
-            #     self.raw_analytical_solved[I] = self.rhs[I]
+            # for I in range(self.M_Dirichlet):
+            #     for J in range(self.M_Dirichlet):
+            #         self.raw_analytical_solved[I + self._Dirichlet_offset_i] += ti.math.cmul(
+            #             self._mat_A[I + self._Dirichlet_offset_i, J + self._Dirichlet_offset_j],
+            #             self.rhs_constructor._Dirichlet_boundary[J]
+            #         )
+                
+            #     for J in range(self.N_Neumann):
+            #         self.raw_analytical_solved[I + self._Dirichlet_offset_i] += ti.math.cmul(
+            #             self._mat_A[I + self._Dirichlet_offset_i, J + self._Neumann_offset_j],
+            #             self.rhs_constructor._Neumann_boundary[J]
+            #         )
+            # for I in range(self.N_Neumann):
+            #     for J in range(self.M_Dirichlet):
+            #         self.raw_analytical_solved[I + self._Neumann_offset_i] += ti.math.cmul(
+            #             self._mat_A[I + self._Neumann_offset_i, J + self._Dirichlet_offset_j],
+            #             self.rhs_constructor._Dirichlet_boundary[J]
+            #         )
+                
+            #     for J in range(self.N_Neumann):
+            #         self.raw_analytical_solved[I + self._Neumann_offset_i] += ti.math.cmul(
+            #             self._mat_A[I + self._Neumann_offset_i, J + self._Neumann_offset_j],
+            #             self.rhs_constructor._Neumann_boundary[J]
+            #         )
             
             for I in self.rhs_constructor._Dirichlet_boundary:
                 self.raw_analytical_solved[I + self._Dirichlet_offset_j] = self.rhs_constructor._Dirichlet_boundary[I]
@@ -655,7 +699,7 @@ class BEMManager:
                         for ii in range(self._dim):
                             x += self.get_vertice_from_flat_panel_index(self._dim * global_i + ii) / float(self._dim)
                         
-                        normal_x = self.get_panel_normal(global_i)
+                        normal_x = self.get_panel_normal(global_i, scope_type=self._scope_type)
                         fx = self.rhs_constructor.analytical_function_Neumann(x, normal_x)
                         self.raw_analytical_solved[local_I + Neumann_offset] = fx
                         # self.raw_solved[local_I + Neumann_offset] += self.rhs_constructor.get_Neumann_boundary(local_I, -1)
@@ -665,7 +709,7 @@ class BEMManager:
                         if self.get_vertice_type(global_vert_i) == int(VertAttachType.NEUMANN_TOBESOLVED):
                             local_vert_i = self.map_global_vert_index_to_local_Neumann(global_vert_i)
                             x = self.get_vertice(global_vert_i)
-                            normal_x = self.get_vert_normal(global_vert_i)
+                            normal_x = self.get_vert_normal(global_vert_i, scope_type=self._scope_type)
                             fx = self.rhs_constructor.analytical_function_Neumann(x, normal_x)
                             if local_vert_i >= 0:
                                 self.raw_analytical_solved[local_vert_i + Neumann_offset] = fx
@@ -680,7 +724,7 @@ class BEMManager:
                         for ii in range(self._dim):
                             x += self.get_vertice_from_flat_panel_index(self._dim * global_i + ii) / float(self._dim)
                         
-                        normal_x = self.get_panel_normal(global_i)
+                        normal_x = self.get_panel_normal(global_i, scope_type=self._scope_type)
                         gx = self.rhs_constructor.analytical_function_Dirichlet(x)
                         self.raw_analytical_solved[local_I + Dirichlet_offset] = gx
                         # self.raw_solved[local_I + Dirichlet_offset] += self.rhs_constructor.get_Dirichlet_boundary(local_I, -1)
@@ -690,7 +734,7 @@ class BEMManager:
                         if self.get_vertice_type(global_vert_i) == int(VertAttachType.DIRICHLET_TOBESOLVED):
                             local_vert_i = self.map_global_vert_index_to_local_Dirichlet(global_vert_i)
                             x = self.get_vertice(global_vert_i)
-                            normal_x = self.get_vert_normal(global_vert_i)
+                            normal_x = self.get_vert_normal(global_vert_i, scope_type=self._scope_type)
                             gx = self.rhs_constructor.analytical_function_Dirichlet(x)
                             if local_vert_i >= 0:
                                 self.raw_analytical_solved[local_vert_i + Dirichlet_offset] = gx
@@ -775,15 +819,25 @@ class BEMManager:
         self.adj_double_layer._Kmat.fill(0)
         self.hypersingular_layer._Wmat.fill(0)
 
-    def matrix_layer_forward(self, k: float, sqrt_n: float = 1.0):
-        self.single_layer.forward(k, sqrt_n)
-        self.double_layer.forward(k, sqrt_n)
-        self.adj_double_layer.forward(k, sqrt_n)
-        self.hypersingular_layer.forward(k, sqrt_n)
+    def matrix_layer_forward(self, k: float, sqrt_n: float = 1.0, scope_type: int = int(ScopeType.NOT_DEFINED)):
+        if scope_type == self._scope_type:
+            self._log_manager.WarnLog("Try to construct Matrix Layers, but you have already in this scope, so re-compute")
+        
+        if scope_type == int(ScopeType.NOT_DEFINED):
+            self._log_manager.ErrorLog("Did not indicate a correct scope type!")
+            exit(-1)
+        
+        self.set_scope_type(scope_type=scope_type)
+        self.matrix_layer_init()
+
+        self.single_layer.forward(scope_type, k, sqrt_n)
+        self.double_layer.forward(scope_type, k, sqrt_n)
+        self.adj_double_layer.forward(scope_type, k, sqrt_n)
+        self.hypersingular_layer.forward(scope_type, k, sqrt_n)
         self._log_manager.InfoLog("Construct all Matrix Layers Done")
     
-    def rhs_layer_forward(self, assemble_type: int, k: float, sqrt_n: float = 1.0):
-        self.rhs_constructor.forward(assemble_type=assemble_type, k=k, sqrt_n=sqrt_n)
+    def rhs_layer_forward(self, scope_type, k: float, sqrt_n: float = 1.0):
+        self.rhs_constructor.forward(scope_type=scope_type, k=k, sqrt_n=sqrt_n)
         self._log_manager.InfoLog("Construct all RHS Layers Done")
     
     def compute_norm(self, A: torch.Tensor):
@@ -816,9 +870,9 @@ class BEMManager:
     def get_mat_A1_inv_norm(self, k: float):
         self._mat_A.fill(0)  # A1
 
-        self.matrix_layer_forward(k=k, sqrt_n=self._sqrt_no)
+        self.matrix_layer_forward(k=k, sqrt_n=self._sqrt_no, scope_type=int(ScopeType.EXTERIOR))
         self.assemble_matA(assemble_type=int(AssembleType.ADD_P_MINUS), multiplier=1.0)  # Add P_MINUS_O
-        self.matrix_layer_forward(k=k, sqrt_n=self._sqrt_ni)
+        self.matrix_layer_forward(k=k, sqrt_n=self._sqrt_ni, scope_type=int(ScopeType.INTERIOR))
         self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=-1.0)  # Reduce P_PLUS_I
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -831,9 +885,9 @@ class BEMManager:
     def get_mat_A2_inv_norm(self, k: float):
         self._mat_A.fill(0)  # A2
 
-        self.matrix_layer_forward(k=k, sqrt_n=self._sqrt_no)
+        self.matrix_layer_forward(k=k, sqrt_n=self._sqrt_no, scope_type=int(ScopeType.EXTERIOR))
         self.assemble_matA(assemble_type=int(AssembleType.ADD_P_MINUS), multiplier=1.0)  # Add P_MINUS_O
-        self.matrix_layer_forward(k=k, sqrt_n=self._sqrt_ni)
+        self.matrix_layer_forward(k=k, sqrt_n=self._sqrt_ni, scope_type=int(ScopeType.INTERIOR))
         self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=1.0)  # Add P_PLUS_I
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -848,7 +902,7 @@ class BEMManager:
 
         self._mat_A.fill(0)
         if need_recompute_matrix_layers:
-            self.matrix_layer_forward(k=k, sqrt_n=self._sqrt_ni)
+            self.matrix_layer_forward(k=k, sqrt_n=self._sqrt_ni, scope_type=int(ScopeType.INTERIOR))
         
         self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=1.0)  # ADD P_PLUS_I
         torch_mat_P = warp_tensor(self._mat_A.to_torch().to(device))
@@ -867,7 +921,7 @@ class BEMManager:
 
         self._mat_A.fill(0)
         if need_recompute_matrix_layers:
-            self.matrix_layer_forward(k=k, sqrt_n=self._sqrt_ni)
+            self.matrix_layer_forward(k=k, sqrt_n=self._sqrt_ni, scope_type=int(ScopeType.INTERIOR))
         
         self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=1.0)  # ADD P_PLUS_I
         torch_mat_P = warp_tensor(self._mat_A.to_torch().to(device))
@@ -883,19 +937,24 @@ class BEMManager:
     def run(self):
         self._mat_A.fill(0)
 
-        self.rhs_constructor.set_boundaries(sqrt_ni=self._sqrt_ni, sqrt_no=self._sqrt_no)
         if self._is_transmission > 0:
             # no scope
-            self.matrix_layer_forward(k=self._k, sqrt_n=self._sqrt_no)
+            self.matrix_layer_forward(k=self._k, sqrt_n=self._sqrt_no, scope_type=int(ScopeType.EXTERIOR))
+
             self.assemble_matA(assemble_type=int(AssembleType.ADD_P_MINUS), multiplier=1.0)  # Add P_MINUS_O
+            self.rhs_constructor.set_boundaries(scope_type=int(ScopeType.INTERIOR), sqrt_ni=self._sqrt_ni, sqrt_no=self._sqrt_no)
             self.assemble_rhs()  # 0.5I - M_O
+            
             # ni scope
-            self.matrix_layer_forward(k=self._k, sqrt_n=self._sqrt_ni)
-            self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=1.0)  # Reduce P_PLUS_I
+            self.matrix_layer_forward(k=self._k, sqrt_n=self._sqrt_ni, scope_type=int(ScopeType.INTERIOR))
+
+            self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=-1.0)  # Reduce P_PLUS_I
         else:
-            self.matrix_layer_forward(k=self._k)
+            self.matrix_layer_forward(k=self._k, scope_type=self._scope_type)
+
             self.assemble_matA(assemble_type=int(AssembleType.ADD_M), multiplier=-1.0)  # Reduce M
-            self.rhs_layer_forward(assemble_type=int(AssembleType.ADD_P_PLUS), k=self._k)
+            self.rhs_constructor.set_boundaries(scope_type=self._scope_type, sqrt_ni=self._sqrt_ni, sqrt_no=self._sqrt_no)
+            self.rhs_layer_forward(k=self._k, scope_type=self._scope_type)
             self.assemble_rhs()  # 0.5I + M
 
         # Solve
@@ -929,6 +988,7 @@ class BEMManager:
         if self._is_transmission > 0:
             # Get your mat P
             self._mat_A.fill(0)
+            # self.matrix_layer_forward(k=self._k, sqrt_n=self._sqrt_ni, scope_type=int(ScopeType.INTERIOR))
             self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=1.0)  # ADD P_PLUS_I
             torch_mat_P = warp_tensor(self._mat_A.to_torch().to(device))
             torch_mat[(self.N_Neumann + self.M_Dirichlet) :, ...] = torch_mat_P
@@ -937,10 +997,11 @@ class BEMManager:
             torch_solved = torch_solved.squeeze(-1)
         else:
             torch_solved = torch.linalg.solve(torch_mat, torch_rhs)
+        
         # if ti.static(self._is_transmission > 0):
         #     self._mat_A.fill(0)
-        #     self.matrix_layer_forward(k=self._k, sqrt_n=self._sqrt_no)
-        #     self.assemble_matP(assemble_type=int(AssembleType.ADD_P_MINUS), multiplier=1.0)  # ADD P_MINUS_O
+        #     self.matrix_layer_forward(k=self._k, sqrt_n=self._sqrt_no, scope_type=int(ScopeType.EXTERIOR))
+        #     self.assemble_matA(assemble_type=int(AssembleType.ADD_P_MINUS), multiplier=1.0)  # ADD P_MINUS_O
         #     torch_mat_P = warp_tensor(self._mat_A.to_torch().to(device))
 
         #     torch_solved_norm = torch_solved.norm()

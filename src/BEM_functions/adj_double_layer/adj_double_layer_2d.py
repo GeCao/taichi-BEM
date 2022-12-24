@@ -56,6 +56,7 @@ class AdjDoubleLayer2d(AbstractAdjDoubleLayer):
     def integrate_on_two_panels(
         self,
         rands: ti.types.vector(2, int),
+        scope_type: int,
         k: float,
         sqrt_n: float,
         panel_x: int,
@@ -108,12 +109,12 @@ class AdjDoubleLayer2d(AbstractAdjDoubleLayer):
         x1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_x + 0)
         x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_x + 1)
         area_x = self._BEM_manager.get_panel_area(panel_x)
-        normal_x = self._BEM_manager.get_panel_normal(panel_x)
+        normal_x = self._BEM_manager.get_panel_normal(panel_x, scope_type=scope_type)
 
         y1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_y + 0)
         y2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_y + 1)
         area_y = self._BEM_manager.get_panel_area(panel_y)
-        normal_y = self._BEM_manager.get_panel_normal(panel_y)
+        normal_y = self._BEM_manager.get_panel_normal(panel_y, scope_type=scope_type)
 
         # Generate number(xsi, eta)
         xsi = self._BEM_manager.Gauss_points_1d[rands.x]
@@ -216,7 +217,7 @@ class AdjDoubleLayer2d(AbstractAdjDoubleLayer):
         return integrand
     
     @ti.kernel
-    def forward(self, k: float, sqrt_n: float):
+    def forward(self, scope_type: int, k: float, sqrt_n: float):
         """
         Compute BIO matix K'_mat
         """
@@ -262,7 +263,7 @@ class AdjDoubleLayer2d(AbstractAdjDoubleLayer):
 
         #                         integrand += self.integrate_on_two_panels(
         #                             rands=rands,
-        #                             k=k, sqrt_n=sqrt_n,
+        #                             scope_type=scope_type, k=k, sqrt_n=sqrt_n,
         #                             panel_x=global_i, panel_y=global_j,
         #                             basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y,
         #                             panels_relation=panels_relation
@@ -271,7 +272,7 @@ class AdjDoubleLayer2d(AbstractAdjDoubleLayer):
         #                         self._Kmat[local_charge_I, local_charge_J] += integrand
     
     @ti.kernel
-    def apply_K_dot_panel_boundary(self, k: float, sqrt_n: float, multiplier: float):
+    def apply_K_dot_N_boundary(self, scope_type: int, k: float, sqrt_n: float, multiplier: float):
         """
         If you are applying Neumann boundary on panels,
         You need to solve a linear system equations to get Dirichlet vertices,
@@ -315,7 +316,7 @@ class AdjDoubleLayer2d(AbstractAdjDoubleLayer):
 
                             integrand += self.integrate_on_two_panels(
                                 rands=rands,
-                                k=k, sqrt_n=sqrt_n,
+                                scope_type=scope_type, k=k, sqrt_n=sqrt_n,
                                 panel_x=global_i, panel_y=global_j,
                                 basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y,
                                 panels_relation=panels_relation

@@ -2,7 +2,7 @@ import taichi as ti
 import numpy as np
 
 from src.BEM_functions.rhs_constructor import AbstractRHSConstructor
-from src.BEM_functions.utils import CellFluxType, VertAttachType, KernelType, PanelsRelation, AssembleType
+from src.BEM_functions.utils import CellFluxType, VertAttachType, KernelType, PanelsRelation, AssembleType, ScopeType
 
 
 @ti.data_oriented
@@ -48,13 +48,14 @@ class RHSConstructor2d(AbstractRHSConstructor):
         self._rhs_vec = ti.Vector.field(self._n, dtype=self._ti_dtype, shape=(self.N_Neumann + self.M_Dirichlet))
 
     @ti.kernel
-    def set_boundaries(self, sqrt_ni: float, sqrt_no: float):
+    def set_boundaries(self, scope_type: int, sqrt_ni: float, sqrt_no: float):
         self._Dirichlet_boundary.fill(0)
         self._Neumann_boundary.fill(0)
         self._f_boundary.fill(0)
 
         Dirichlet_offset_j = self._BEM_manager.get_Dirichlet_offset_j()
         Neumann_offset_j = self._BEM_manager.get_Neumann_offset_j()
+
         if ti.static(self._BEM_manager._is_transmission > 0):
             if ti.static(self._Q_Neumann == 0):
                 for local_I in range(self.num_of_panels_Neumann):
@@ -65,10 +66,12 @@ class RHSConstructor2d(AbstractRHSConstructor):
                     for ii in range(self._dim):
                         x += self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + ii) / float(self._dim)
                     
-                    normal_x = self._BEM_manager.get_panel_normal(global_i)
+                    normal_x_int = self._BEM_manager.get_panel_normal(global_i, scope_type=int(ScopeType.INTERIOR))
+                    normal_x_ext = -normal_x_int
+                    
                     self._Neumann_boundary[global_i] += self.analytical_function_Neumann(x, normal_x, sqrt_ni)
                     self._f_boundary[Neumann_offset_j + local_I] += (
-                        self.analytical_function_Neumann(x, normal_x, sqrt_ni) - self.analytical_function_Neumann(x, normal_x, sqrt_no)
+                        self.analytical_function_Neumann(x, normal_x_int, sqrt_ni) - self.analytical_function_Neumann(x, normal_x_ext, sqrt_no)
                     )
             elif ti.static(self._Q_Neumann == 1):
                 for global_vert_idx_i in range(self.num_of_vertices):
@@ -77,10 +80,12 @@ class RHSConstructor2d(AbstractRHSConstructor):
                         self._BEM_manager.get_vertice_type(global_vert_idx_i) == int(VertAttachType.NEUMANN_TOBESOLVED):
                         local_vert_idx_i = self._BEM_manager.map_global_vert_index_to_local_Neumann(global_vert_idx_i)
                         x = self._BEM_manager.get_vertice(global_vert_idx_i)
-                        normal_x = self._BEM_manager.get_vert_normal(global_vert_idx_i)
+                        normal_x_int = self._BEM_manager.get_vert_normal(global_vert_idx_i, scope_type=int(ScopeType.INTERIOR))
+                        normal_x_ext = -normal_x_int
+
                         self._Neumann_boundary[global_vert_idx_i] += self.analytical_function_Neumann(x, normal_x, sqrt_ni)
                         self._f_boundary[Neumann_offset_j + local_vert_idx_i] += (
-                            self.analytical_function_Neumann(x, normal_x, sqrt_ni) - self.analytical_function_Neumann(x, normal_x, sqrt_no)
+                            self.analytical_function_Neumann(x, normal_x_int, sqrt_ni) - self.analytical_function_Neumann(x, normal_x_ext, sqrt_no)
                         )
             
             if ti.static(self._Q_Dirichlet == 0):
@@ -92,7 +97,6 @@ class RHSConstructor2d(AbstractRHSConstructor):
                     for ii in range(self._dim):
                         x += self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + ii) / float(self._dim)
                     
-                    normal_x = self._BEM_manager.get_panel_normal(global_i)
                     self._Dirichlet_boundary[global_i] += self.analytical_function_Dirichlet(x, sqrt_ni)
                     self._f_boundary[Dirichlet_offset_j + local_I] += (
                         self.analytical_function_Dirichlet(x, sqrt_ni) - self.analytical_function_Dirichlet(x, sqrt_no)
@@ -104,7 +108,6 @@ class RHSConstructor2d(AbstractRHSConstructor):
                         self._BEM_manager.get_vertice_type(global_vert_idx_i) == int(VertAttachType.DIRICHLET_TOBESOLVED):
                         local_vert_idx_i = self._BEM_manager.map_global_vert_index_to_local_Dirichlet(global_vert_idx_i)
                         x = self._BEM_manager.get_vertice(global_vert_idx_i)
-                        normal_x = self._BEM_manager.get_vert_normal(global_vert_idx_i)
                         self._Dirichlet_boundary[global_vert_idx_i] += self.analytical_function_Dirichlet(x, sqrt_ni)
                         self._f_boundary[Dirichlet_offset_j + local_vert_idx_i] += (
                             self.analytical_function_Dirichlet(x, sqrt_ni) - self.analytical_function_Dirichlet(x, sqrt_no)
@@ -119,14 +122,14 @@ class RHSConstructor2d(AbstractRHSConstructor):
                     for ii in range(self._dim):
                         x += self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + ii) / float(self._dim)
                     
-                    normal_x = self._BEM_manager.get_panel_normal(global_i)
+                    normal_x = self._BEM_manager.get_panel_normal(global_i, scope_type=scope_type)
                     fx = self.analytical_function_Neumann(x, normal_x)
                     self._Neumann_boundary[global_i] += fx
             elif ti.static(self._Q_Neumann == 1):
                 for global_vert_idx_i in range(self.num_of_vertices):
                     if self._BEM_manager.get_vertice_type(global_vert_idx_i) == int(VertAttachType.DIRICHLET_TOBESOLVED):
                         x = self._BEM_manager.get_vertice(global_vert_idx_i)
-                        normal_x = self._BEM_manager.get_vert_normal(global_vert_idx_i)
+                        normal_x = self._BEM_manager.get_vert_normal(global_vert_idx_i, scope_type=scope_type)
                         fx = self.analytical_function_Neumann(x, normal_x)
                         self._Neumann_boundary[global_vert_idx_i] += fx
         
@@ -139,14 +142,12 @@ class RHSConstructor2d(AbstractRHSConstructor):
                     for ii in range(self._dim):
                         x += self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + ii) / float(self._dim)
                     
-                    normal_x = self._BEM_manager.get_panel_normal(global_i)
                     gx = self.analytical_function_Dirichlet(x)
                     self._Dirichlet_boundary[global_i] += gx
             elif ti.static(self._Q_Dirichlet == 1):
                 for global_vert_idx_i in range(self.num_of_vertices):
                     if self._BEM_manager.get_vertice_type(global_vert_idx_i) == int(VertAttachType.NEUMANN_TOBESOLVED):
                         x = self._BEM_manager.get_vertice(global_vert_idx_i)
-                        normal_x = self._BEM_manager.get_vert_normal(global_vert_idx_i)
                         gx = self.analytical_function_Dirichlet(x)
                         self._Dirichlet_boundary[global_vert_idx_i] += gx
     
@@ -341,26 +342,29 @@ class RHSConstructor2d(AbstractRHSConstructor):
                             elif ti.static(self._n == 2):
                                 self._rhs_vec[local_charge_I + Dirichlet_offset_i] += multiplier * ti.math.cmul(integrand, ti.math.cconj(fx))
     
-    def multiply_M_to_vector(self, k: float, sqrt_n: float, multiplier: float):
+    def multiply_M_to_vector(self, scope_type: int, k: float, sqrt_n: float, multiplier: float):
         if self.N_Neumann > 0:
             # += K * g
-            self._BEM_manager.double_layer.apply_K_dot_vert_boundary(k=k, sqrt_n=sqrt_n, multiplier=multiplier)
+            self._BEM_manager.double_layer.apply_K_dot_D_boundary(scope_type=scope_type, k=k, sqrt_n=sqrt_n, multiplier=multiplier)
             # -= V * f
-            self._BEM_manager.single_layer.apply_V_dot_panel_boundary(k=k, sqrt_n=sqrt_n, multiplier=-multiplier)
+            self._BEM_manager.single_layer.apply_V_dot_F_boundary(scope_type=scope_type, k=k, sqrt_n=sqrt_n, multiplier=-multiplier)
 
         if self.M_Dirichlet > 0:
             # -= K' * f
-            self._BEM_manager.adj_double_layer.apply_K_dot_panel_boundary(k=k, sqrt_n=sqrt_n, multiplier=-multiplier)
+            self._BEM_manager.adj_double_layer.apply_K_dot_F_boundary(scope_type=scope_type, k=k, sqrt_n=sqrt_n, multiplier=-multiplier)
             # -= W * g
-            self._BEM_manager.hypersingular_layer.apply_W_dot_vert_boundary(k=k, sqrt_n=sqrt_n, multiplier=-multiplier)
+            self._BEM_manager.hypersingular_layer.apply_W_dot_D_boundary(scope_type=scope_type, k=k, sqrt_n=sqrt_n, multiplier=-multiplier)
     
-    def forward(self, assemble_type: int, k: float, sqrt_n: float):
+    def forward(self, scope_type: int, k: float, sqrt_n: float):
         self._rhs_vec.fill(0)
 
         if ti.static(self._BEM_manager._is_transmission <= 0):
-            self.multiply_identity_to_vector(multiplier=0.5)
+            scope_type = self._BEM_manager.get_scope_type()
+            if scope_type == int(ScopeType.INTERIOR):
+                self.multiply_identity_to_vector(multiplier=0.5)
+            elif scope_type == int(ScopeType.EXTERIOR):
+                self.multiply_identity_to_vector(multiplier=-0.5)
+            else:
+                raise RuntimeError("You have to indicate a concrete scope type to construct rhs")
 
-            if assemble_type == int(AssembleType.ADD_P_MINUS):
-                self.multiply_M_to_vector(k=k, sqrt_n=sqrt_n, multiplier=-1.0)
-            elif assemble_type == int(AssembleType.ADD_P_PLUS):
-                self.multiply_M_to_vector(k=k, sqrt_n=sqrt_n, multiplier=1.0)
+            self.multiply_M_to_vector(scope_type=scope_type, k=k, sqrt_n=sqrt_n, multiplier=1.0)

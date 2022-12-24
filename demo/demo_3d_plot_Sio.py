@@ -151,6 +151,7 @@ def main(args):
         'k': args.k,
         'kernel': args.kernel,
         'boundary': args.boundary,
+        'scope': args.scope,
         'show': args.show,
         'Q_Neumann': args.Q_Neumann,
         'Q_Dirichlet': args.Q_Dirichlet,
@@ -162,7 +163,7 @@ def main(args):
 
     demo_path = os.path.abspath(os.curdir)
 
-    simulation_parameters["Q_Neumann"] = 1
+    simulation_parameters["Q_Neumann"] = 0
     simulation_parameters["Q_Dirichlet"] = 1
     with_augmented = False
     save_path = "A1_plot_{}_{}_{}.png".format(simulation_parameters["Q_Neumann"], simulation_parameters["Q_Dirichlet"], simulation_parameters["object"])
@@ -250,6 +251,14 @@ if __name__ == '__main__':
         default="Full",
         choices=["Dirichlet", "Neumann", "Mix", "Full"],
         help="Do we need a video for visualization?",
+    )
+
+    parser.add_argument(
+        "--scope",
+        type=str,
+        default="Interior",
+        choices=["Interior", "Exterior"],
+        help="Indicating Interior or Exterior, not useful for transmission problem",
     )
 
     parser.add_argument(

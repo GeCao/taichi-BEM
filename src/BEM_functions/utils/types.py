@@ -10,6 +10,15 @@ class CellFluxType(Enum):
         return self.value
 
 
+class ScopeType(Enum):
+    NOT_DEFINED = 0
+    INTERIOR = 1
+    EXTERIOR=2
+
+    def __int__(self):
+        return self.value
+
+
 class VertAttachType(Enum):
     NEUMANN_TOBESOLVED = 0
     DIRICHLET_TOBESOLVED=1

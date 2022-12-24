@@ -30,12 +30,12 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
 
         self._Kmat = ti.Vector.field(self._n, dtype=self._ti_dtype, shape=())
         assert(self.N_Neumann + self.M_Dirichlet > 0)
-        # if self.N_Neumann > 0 and self.M_Dirichlet > 0:
-        #     self._Kmat = ti.Vector.field(
-        #         self._n,
-        #         dtype=self._ti_dtype,
-        #         shape=(self.M_Dirichlet, self.N_Neumann)
-        #     )
+        if self.N_Neumann > 0 and self.M_Dirichlet > 0:
+            self._Kmat = ti.Vector.field(
+                self._n,
+                dtype=self._ti_dtype,
+                shape=(self.M_Dirichlet, self.N_Neumann)
+            )
     
     @ti.func
     def get_K_mat(self):
@@ -57,6 +57,7 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
     def integrate_on_two_panels(
         self,
         rands: ti.types.vector(4, int),
+        scope_type: int,
         k: float,
         sqrt_n: float,
         panel_x: int,
@@ -135,13 +136,13 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
         x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_x + 1)
         x3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_x + 2)
         area_x = self._BEM_manager.get_panel_area(panel_x)
-        normal_x = self._BEM_manager.get_panel_normal(panel_x)
+        normal_x = self._BEM_manager.get_panel_normal(panel_x, scope_type=scope_type)
 
         y1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_y + 0)
         y2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_y + 1)
         y3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_y + 2)
         area_y = self._BEM_manager.get_panel_area(panel_y)
-        normal_y = self._BEM_manager.get_panel_normal(panel_y)
+        normal_y = self._BEM_manager.get_panel_normal(panel_y, scope_type=scope_type)
 
         # Generate number(xsi, eta1, eta2, eta3)
         xsi = self._BEM_manager.Gauss_points_1d[rands.x]
@@ -206,22 +207,27 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                     self.grad_G_y(x=y, y=x, normal_y=normal_x, k=k, sqrt_n=sqrt_n) * phix * phiy
                 ) * weight * jacobian
 
-                r1_y, r2_y = xz[0], xz[1]
-                r1_x, r2_x = xz[0] - xz[2], xz[1] - xz[3]
-
-                x = self.interplate_from_unit_panel_to_general(
-                    r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
-                )
-                y = self.interplate_from_unit_panel_to_general(
-                    r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
-                )
-                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-
                 # D2, D4, D6
                 integrand += (
-                    self.grad_G_y(x=y, y=x, normal_y=normal_x, k=k, sqrt_n=sqrt_n) * phix * phiy
+                    self.grad_G_y(x=x, y=y, normal_y=normal_x, k=k, sqrt_n=sqrt_n) * phix * phiy
                 ) * weight * jacobian
+
+                # r1_y, r2_y = xz[0], xz[1]
+                # r1_x, r2_x = xz[0] - xz[2], xz[1] - xz[3]
+
+                # x = self.interplate_from_unit_panel_to_general(
+                #     r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
+                # )
+                # y = self.interplate_from_unit_panel_to_general(
+                #     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
+                # )
+                # phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+                # phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
+
+                # # D2, D4, D6
+                # integrand += (
+                #     self.grad_G_y(x=y, y=x, normal_y=normal_x, k=k, sqrt_n=sqrt_n) * phix * phiy
+                # ) * weight * jacobian
         elif panels_relation == int(PanelsRelation.COMMON_VERTEX):
             # This algorithm includes 6 regions D1, D2
             # D1
@@ -370,64 +376,64 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
         return integrand
     
     @ti.kernel
-    def forward(self, k: float, sqrt_n: float):
+    def forward(self, scope_type: int, k: float, sqrt_n: float):
         """
         Compute BIO matix K'_mat
         """
-        return
-        # if ti.static(self.N_Neumann > 0 and self.M_Dirichlet > 0):
-        #     self._Kmat.fill(0)
+        # return
+        if ti.static(self.N_Neumann > 0 and self.M_Dirichlet > 0):
+            self._Kmat.fill(0)
 
-        #     basis_func_num_Neumann = self._BEM_manager.get_num_of_basis_functions_from_Q(self._Q_Neumann)
-        #     basis_func_num_Dirichlet = self._BEM_manager.get_num_of_basis_functions_from_Q(self._Q_Dirichlet)
+            basis_func_num_Neumann = self._BEM_manager.get_num_of_basis_functions_from_Q(self._Q_Neumann)
+            basis_func_num_Dirichlet = self._BEM_manager.get_num_of_basis_functions_from_Q(self._Q_Dirichlet)
 
-        #     GaussQR2 = self._GaussQR * self._GaussQR
-        #     GaussQR4 = GaussQR2 * GaussQR2
+            GaussQR2 = self._GaussQR * self._GaussQR
+            GaussQR4 = GaussQR2 * GaussQR2
             
-        #     for local_I in range(self.num_of_panels_Dirichlet):
-        #         for local_J in range(self.num_of_panels_Neumann):
-        #             global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
-        #             global_j = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_J)
+            for local_I in range(self.num_of_panels_Dirichlet):
+                for local_J in range(self.num_of_panels_Neumann):
+                    global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
+                    global_j = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_J)
 
-        #             panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
+                    panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
 
-        #             for ii in range(basis_func_num_Dirichlet):
-        #                 for jj in range(basis_func_num_Neumann):
-        #                     basis_function_index_x = self._BEM_manager.get_basis_function_index(self._Q_Dirichlet, ii)
-        #                     basis_function_index_y = self._BEM_manager.get_basis_function_index(self._Q_Neumann, jj)
+                    for ii in range(basis_func_num_Dirichlet):
+                        for jj in range(basis_func_num_Neumann):
+                            basis_function_index_x = self._BEM_manager.get_basis_function_index(self._Q_Dirichlet, ii)
+                            basis_function_index_y = self._BEM_manager.get_basis_function_index(self._Q_Neumann, jj)
 
-        #                     local_charge_I = self._BEM_manager.proj_from_local_panel_index_to_local_charge_index(
-        #                         Q_=self._Q_Dirichlet,
-        #                         local_panel_index=local_I,
-        #                         basis_func_index=basis_function_index_x,
-        #                         panel_type=int(CellFluxType.DIRICHLET_TOBESOLVED)
-        #                     )
-        #                     local_charge_J = self._BEM_manager.proj_from_local_panel_index_to_local_charge_index(
-        #                         Q_=self._Q_Neumann,
-        #                         local_panel_index=local_J,
-        #                         basis_func_index=basis_function_index_y,
-        #                         panel_type=int(CellFluxType.NEUMANN_TOBESOLVED)
-        #                     )
+                            local_charge_I = self._BEM_manager.proj_from_local_panel_index_to_local_charge_index(
+                                Q_=self._Q_Dirichlet,
+                                local_panel_index=local_I,
+                                basis_func_index=basis_function_index_x,
+                                panel_type=int(CellFluxType.DIRICHLET_TOBESOLVED)
+                            )
+                            local_charge_J = self._BEM_manager.proj_from_local_panel_index_to_local_charge_index(
+                                Q_=self._Q_Neumann,
+                                local_panel_index=local_J,
+                                basis_func_index=basis_function_index_y,
+                                panel_type=int(CellFluxType.NEUMANN_TOBESOLVED)
+                            )
 
-        #                     integrand = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
-        #                     for gauss_number in range(GaussQR4):
-        #                         iii = gauss_number // GaussQR2
-        #                         jjj = gauss_number % GaussQR2
-        #                         rands = ti.Vector([iii // self._GaussQR, iii % self._GaussQR, jjj // self._GaussQR, jjj % self._GaussQR], ti.i32)
+                            integrand = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
+                            for gauss_number in range(GaussQR4):
+                                iii = gauss_number // GaussQR2
+                                jjj = gauss_number % GaussQR2
+                                rands = ti.Vector([iii // self._GaussQR, iii % self._GaussQR, jjj // self._GaussQR, jjj % self._GaussQR], ti.i32)
 
-        #                         integrand += self.integrate_on_two_panels(
-        #                             rands=rands,
-        #                             k=k, sqrt_n=sqrt_n,
-        #                             panel_x=global_i, panel_y=global_j,
-        #                             basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y,
-        #                             panels_relation=panels_relation
-        #                         )
+                                integrand += self.integrate_on_two_panels(
+                                    rands=rands,
+                                    scope_type=scope_type, k=k, sqrt_n=sqrt_n,
+                                    panel_x=global_i, panel_y=global_j,
+                                    basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y,
+                                    panels_relation=panels_relation
+                                )
                             
-        #                     if local_charge_I >= 0 and local_charge_J >= 0:
-        #                         self._Kmat[local_charge_I, local_charge_J] += integrand
+                            if local_charge_I >= 0 and local_charge_J >= 0:
+                                self._Kmat[local_charge_I, local_charge_J] += integrand
     
     @ti.kernel
-    def apply_K_dot_panel_boundary(self, k: float, sqrt_n: float, multiplier: float):
+    def apply_K_dot_N_boundary(self, scope_type: int, k: float, sqrt_n: float, multiplier: float):
         """
         If you are applying Neumann boundary on panels,
         You need to solve a linear system equations to get Dirichlet vertices,
@@ -472,7 +478,7 @@ class AdjDoubleLayer3d(AbstractAdjDoubleLayer):
                             
                             integrand += self.integrate_on_two_panels(
                                 rands=rands,
-                                k=k, sqrt_n=sqrt_n,
+                                scope_type=scope_type, k=k, sqrt_n=sqrt_n,
                                 panel_x=global_i, panel_y=global_j,
                                 basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y,
                                 panels_relation=panels_relation

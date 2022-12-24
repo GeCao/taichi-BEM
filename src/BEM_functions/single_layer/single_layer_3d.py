@@ -55,6 +55,7 @@ class SingleLayer3d(AbstractSingleLayer):
     def integrate_on_two_panels(
         self,
         rands: ti.types.vector(4, int),
+        scope_type: int,
         k: float,
         sqrt_n: float,
         panel_x: int,
@@ -133,13 +134,11 @@ class SingleLayer3d(AbstractSingleLayer):
         x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_x + 1)
         x3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_x + 2)
         area_x = self._BEM_manager.get_panel_area(panel_x)
-        normal_x = self._BEM_manager.get_panel_normal(panel_x)
 
         y1 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_y + 0)
         y2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_y + 1)
         y3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_y + 2)
         area_y = self._BEM_manager.get_panel_area(panel_y)
-        normal_y = self._BEM_manager.get_panel_normal(panel_y)
 
         # Generate number(xsi, eta1, eta2, eta3)
         xsi = self._BEM_manager.Gauss_points_1d[rands.x]
@@ -201,22 +200,27 @@ class SingleLayer3d(AbstractSingleLayer):
                     self.G(x=x, y=y, k=k, sqrt_n=sqrt_n) * phix * phiy
                 ) * weight * jacobian
 
-                r1_y, r2_y = xz[0], xz[1]
-                r1_x, r2_x = xz[0] - xz[2], xz[1] - xz[3]
-
-                x = self.interplate_from_unit_panel_to_general(
-                    r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
-                )
-                y = self.interplate_from_unit_panel_to_general(
-                    r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
-                )
-                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-
                 # D2, D4, D6
                 integrand += (
-                    self.G(x=x, y=y, k=k, sqrt_n=sqrt_n) * phix * phiy
+                    self.G(x=y, y=x, k=k, sqrt_n=sqrt_n) * phix * phiy
                 ) * weight * jacobian
+
+                # r1_y, r2_y = xz[0], xz[1]
+                # r1_x, r2_x = xz[0] - xz[2], xz[1] - xz[3]
+
+                # x = self.interplate_from_unit_panel_to_general(
+                #     r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
+                # )
+                # y = self.interplate_from_unit_panel_to_general(
+                #     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
+                # )
+                # phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+                # phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
+
+                # # D2, D4, D6
+                # integrand += (
+                #     self.G(x=x, y=y, k=k, sqrt_n=sqrt_n) * phix * phiy
+                # ) * weight * jacobian
         elif panels_relation == int(PanelsRelation.COMMON_VERTEX):
             # This algorithm includes 6 regions D1, D2
             # D1
@@ -365,7 +369,7 @@ class SingleLayer3d(AbstractSingleLayer):
         return integrand
     
     @ti.kernel
-    def forward(self, k: float, sqrt_n: float):
+    def forward(self, scope_type: int, k: float, sqrt_n: float):
         """
         Compute BIO matix V_mat
         """
@@ -411,7 +415,7 @@ class SingleLayer3d(AbstractSingleLayer):
 
                                 integrand += self.integrate_on_two_panels(
                                     rands=rands,
-                                    k=k, sqrt_n=sqrt_n,
+                                    scope_type=scope_type, k=k, sqrt_n=sqrt_n,
                                     panel_x=global_i, panel_y=global_j,
                                     basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y,
                                     panels_relation=panels_relation
@@ -421,7 +425,7 @@ class SingleLayer3d(AbstractSingleLayer):
                                 self._Vmat[local_charge_I, local_charge_J] += integrand
     
     @ti.kernel
-    def apply_V_dot_panel_boundary(self, k: float, sqrt_n: float, multiplier: float):
+    def apply_V_dot_N_boundary(self, scope_type: int, k: float, sqrt_n: float, multiplier: float):
         """
         If you are applying Dirichlet boundary on vertices,
         You need to solve a linear system equations to get Neumann panels,
@@ -466,7 +470,7 @@ class SingleLayer3d(AbstractSingleLayer):
 
                             integrand += self.integrate_on_two_panels(
                                 rands=rands,
-                                k=k, sqrt_n=sqrt_n,
+                                scope_type=scope_type, k=k, sqrt_n=sqrt_n,
                                 panel_x=global_i, panel_y=global_j,
                                 basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y,
                                 panels_relation=panels_relation

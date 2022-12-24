@@ -67,6 +67,7 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
     def integrate_on_two_panels(
         self,
         rands: ti.types.vector(4, int),
+        scope_type: int,
         k: float,
         sqrt_n: float,
         panel_x: int,
@@ -145,7 +146,7 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
         x2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_x + 1)
         x3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_x + 2)
         area_x = self._BEM_manager.get_panel_area(panel_x)
-        normal_x = self._BEM_manager.get_panel_normal(panel_x)
+        normal_x = self._BEM_manager.get_panel_normal(panel_x, scope_type=scope_type)
         phi1_x = 1.0 * (basis_function_index_x == 0)
         phi2_x = 1.0 * (basis_function_index_x == 1)
         phi3_x = 1.0 * (basis_function_index_x == 2)
@@ -154,7 +155,7 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
         y2 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_y + 1)
         y3 = self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * panel_y + 2)
         area_y = self._BEM_manager.get_panel_area(panel_y)
-        normal_y = self._BEM_manager.get_panel_normal(panel_y)
+        normal_y = self._BEM_manager.get_panel_normal(panel_y, scope_type=scope_type)
         phi1_y = 1.0 * (basis_function_index_y == 0)
         phi2_y = 1.0 * (basis_function_index_y == 1)
         phi3_y = 1.0 * (basis_function_index_y == 2)
@@ -238,25 +239,33 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
                     -self.G(x=x, y=y, k=k, sqrt_n=sqrt_n) * phix * phiy * ti.math.dot(normal_x, normal_y)
                 ) * weight * jacobian
 
-                r1_y, r2_y = xz[0], xz[1]
-                r1_x, r2_x = xz[0] - xz[2], xz[1] - xz[3]
-
-                x = self.interplate_from_unit_panel_to_general(
-                    r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
-                )
-                y = self.interplate_from_unit_panel_to_general(
-                    r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
-                )
-                phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
-                phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
-
                 # D2, D4, D6
                 integrand += (
-                    self.G(x=x, y=y, k=k, sqrt_n=sqrt_n)
+                    self.G(x=y, y=x, k=k, sqrt_n=sqrt_n)
                 ) * weight * jacobian * curl_phix_dot_curl_phiy
                 integrand += k2 * (
-                    -self.G(x=x, y=y, k=k, sqrt_n=sqrt_n) * phix * phiy * ti.math.dot(normal_x, normal_y)
+                    -self.G(x=y, y=x, k=k, sqrt_n=sqrt_n) * phix * phiy * ti.math.dot(normal_x, normal_y)
                 ) * weight * jacobian
+
+                # r1_y, r2_y = xz[0], xz[1]
+                # r1_x, r2_x = xz[0] - xz[2], xz[1] - xz[3]
+
+                # x = self.interplate_from_unit_panel_to_general(
+                #     r1=r1_x, r2=r2_x, x1=x1, x2=x2, x3=x3
+                # )
+                # y = self.interplate_from_unit_panel_to_general(
+                #     r1=r1_y, r2=r2_y, x1=y1, x2=y2, x3=y3
+                # )
+                # phix = self.shape_function(r1_x, r2_x, i=basis_function_index_x)
+                # phiy = self.shape_function(r1_y, r2_y, i=basis_function_index_y)
+
+                # # D2, D4, D6
+                # integrand += (
+                #     self.G(x=x, y=y, k=k, sqrt_n=sqrt_n)
+                # ) * weight * jacobian * curl_phix_dot_curl_phiy
+                # integrand += k2 * (
+                #     -self.G(x=x, y=y, k=k, sqrt_n=sqrt_n) * phix * phiy * ti.math.dot(normal_x, normal_y)
+                # ) * weight * jacobian
         elif panels_relation == int(PanelsRelation.COMMON_VERTEX):
             # This algorithm includes 6 regions D1, D2
             # D1
@@ -426,7 +435,7 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
         return integrand
     
     @ti.kernel
-    def forward(self, k: float, sqrt_n: float):
+    def forward(self, scope_type: int, k: float, sqrt_n: float):
         """
         Compute BIO matix W_mat
         Please note other than other three BIOs, this BIO has a negtive sign
@@ -473,7 +482,7 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
                                 
                                 integrand += self.integrate_on_two_panels(
                                     rands=rands,
-                                    k=k, sqrt_n=sqrt_n,
+                                    scope_type=scope_type, k=k, sqrt_n=sqrt_n,
                                     panel_x=global_i, panel_y=global_j,
                                     basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y,
                                     panels_relation=panels_relation
@@ -483,7 +492,7 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
                                 self._Wmat[local_charge_I, local_charge_J] += integrand
     
     @ti.kernel
-    def apply_W_dot_vert_boundary(self, k: float, sqrt_n: float, multiplier: float):
+    def apply_W_dot_D_boundary(self, scope_type: int, k: float, sqrt_n: float, multiplier: float):
         """
         If you are applying Neumann boundary on panels,
         You need to solve a linear system equations to get Dirichlet vertices,
@@ -528,7 +537,7 @@ class HypersingularLayer3d(AbstractHypersingularLayer):
                             
                             integrand += self.integrate_on_two_panels(
                                 rands=rands,
-                                k=k, sqrt_n=sqrt_n,
+                                scope_type=scope_type, k=k, sqrt_n=sqrt_n,
                                 panel_x=global_i, panel_y=global_j,
                                 basis_function_index_x=basis_function_index_x, basis_function_index_y=basis_function_index_y,
                                 panels_relation=panels_relation
