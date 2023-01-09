@@ -23,7 +23,7 @@ from src.managers import CoreManager
 ti.init(arch=ti.gpu, kernel_profiler=True)
 
 N = 10
-wave_numbers = [1.0 / N + i * 1.0 / N for i in range(15 * N)]
+wave_numbers = [1.0 / N + i * 1.0 / N for i in range(10 * N)]
 A1_inv_norms = [0.0 for i in range(len(wave_numbers))]
 A2_inv_norms = [0.0 for i in range(len(wave_numbers))]
 A1_augmented_inv_norms = [0.0 for i in range(len(wave_numbers))]
@@ -72,13 +72,13 @@ def compute_A1_inv_list(simulation_parameters, with_augmented: bool = False):
         core_manager._BEM_manager.matrix_layer_init()
         A1_inv_norm = core_manager._BEM_manager.get_mat_A1_inv_norm(k)
 
-        A1_inv_norms[epoch] = 1.0 * A1_inv_norm
+        A1_inv_norms[epoch] = A1_inv_norm
         print("epoch = {}, k = {}, A1_norm = {}".format(epoch, k, A1_inv_norm))
 
         if with_augmented:
             need_recompute_matrix_layers = False
             A1_augmented_inv_norm = core_manager._BEM_manager.get_augment_mat_A1_inv_norm(k, need_recompute_matrix_layers)
-            A1_augmented_inv_norms[epoch] = 1.0 * A1_augmented_inv_norm
+            A1_augmented_inv_norms[epoch] = A1_augmented_inv_norm
             print("epoch = {}, k = {}, A1_augmented_norm = {}".format(epoch, k, A1_augmented_inv_norm))
 
 def compute_A2_inv_list(simulation_parameters, with_augmented: bool = False):
@@ -93,14 +93,16 @@ def compute_A2_inv_list(simulation_parameters, with_augmented: bool = False):
         core_manager._BEM_manager.matrix_layer_init()
         A2_inv_norm = core_manager._BEM_manager.get_mat_A2_inv_norm(k)
 
-        A2_inv_norms[epoch] = 1.0 * A2_inv_norm
-        print("epoch = {}, A2_norm = {}".format(epoch, A2_inv_norm))
+        A2_inv_norms[epoch] = A2_inv_norm
+        print("epoch = {}, k = {}, A2_norm = {}".format(epoch, k, A2_inv_norm))
 
         if with_augmented:
             need_recompute_matrix_layers = False
             A2_augmented_inv_norm = core_manager._BEM_manager.get_augment_mat_A2_inv_norm(k, need_recompute_matrix_layers)
-            A2_augmented_inv_norms[epoch] = 1.0 * A2_augmented_inv_norm
-            print("epoch = {}, A2_augmented_norm = {}".format(epoch, A2_augmented_inv_norm))
+            A2_augmented_inv_norms[epoch] = A2_augmented_inv_norm
+            print("epoch = {}, k = {}, A2_augmented_norm = {}".format(epoch, k, A2_augmented_inv_norm))
+    
+    print(A2_inv_norms)
 
 def plot_A1(save_path_, simulation_parameters, with_augmented: bool):
     fig = plt.figure(1)
@@ -163,10 +165,10 @@ def main(args):
 
     demo_path = os.path.abspath(os.curdir)
 
-    simulation_parameters["Q_Neumann"] = 0
+    simulation_parameters["Q_Neumann"] = 1
     simulation_parameters["Q_Dirichlet"] = 1
     with_augmented = False
-    save_path = "A1_plot_{}_{}_{}.png".format(simulation_parameters["Q_Neumann"], simulation_parameters["Q_Dirichlet"], simulation_parameters["object"])
+    save_path = "A2_plot_{}_{}_{}_GaussQR{}.png".format(simulation_parameters["Q_Neumann"], simulation_parameters["Q_Dirichlet"], simulation_parameters["object"], simulation_parameters["GaussQR"])
     if with_augmented:
         save_path = "Augment_" + save_path
     
@@ -176,13 +178,13 @@ def main(args):
         save_path = "NonPhysical_" + save_path
     
     save_path = os.path.join(demo_path, "data", save_path)
-    compute_A1_inv_list(simulation_parameters, with_augmented=with_augmented)
-    plot_A1(save_path, simulation_parameters, with_augmented=with_augmented)
+    compute_A2_inv_list(simulation_parameters, with_augmented=with_augmented)
+    plot_A2(save_path, simulation_parameters, with_augmented=with_augmented)
 
     # simulation_parameters["Q_Neumann"] = 1
     # simulation_parameters["Q_Dirichlet"] = 1
     # use_augmented = False
-    # save_path = "A1A2_plot_{}_{}.png".format(simulation_parameters["Q_Neumann"], simulation_parameters["Q_Dirichlet"])
+    # save_path = "A1A2_plot_{}_{}_{}_GaussQR{}.png".format(simulation_parameters["Q_Neumann"], simulation_parameters["Q_Dirichlet"], simulation_parameters["object"], simulation_parameters["GaussQR"])
     # if use_augmented:
     #     save_path = "Augment_" + save_path
     
@@ -195,6 +197,8 @@ def main(args):
     # compute_A1_inv_list(simulation_parameters, with_augmented=use_augmented)
     # compute_A2_inv_list(simulation_parameters, with_augmented=use_augmented)
     # plot_A1A2(save_path, simulation_parameters, with_augmented=use_augmented)
+
+    print("The figure is saved into: ", save_path)
 
 
 if __name__ == '__main__':
@@ -212,7 +216,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--object",
         type=str,
-        default="analytical_sphere",
+        default="sphere",
         choices=["sphere", "cube", "hemisphere", "stanford_bunny", "analytical_sphere", "fined_sphere"],
         help="dimension: 2D or 3D",
     )

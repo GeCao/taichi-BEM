@@ -264,6 +264,10 @@ class RHSConstructor2d(AbstractRHSConstructor):
             # += 0.5I * g
             for local_I in range(self.num_of_panels_Neumann):
                 global_i = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_I)
+                panel_type_i = self._BEM_manager.get_panel_type(global_i)
+                if panel_type_i == int(CellFluxType.BOTH_TOBESOLVED):
+                    panel_type_i = int(CellFluxType.NEUMANN_TOBESOLVED)
+                
                 for ii in range(basis_func_num_Neumann):
                     for jj in range(basis_func_num_Dirichlet):
                         basis_function_index_x = self._BEM_manager.get_basis_function_index(self._Q_Neumann, ii)
@@ -273,14 +277,14 @@ class RHSConstructor2d(AbstractRHSConstructor):
                             Q_=self._Q_Neumann,
                             local_panel_index=local_I,
                             basis_func_index=basis_function_index_x,
-                            panel_type=int(CellFluxType.NEUMANN_TOBESOLVED)
+                            panel_type=panel_type_i
                         )
 
                         global_charge_j = self._BEM_manager.proj_from_local_panel_index_to_global_charge_index(
                             Q_=self._Q_Dirichlet,
                             local_panel_index=local_I,
                             basis_func_index=basis_function_index_y,
-                            panel_type=int(CellFluxType.NEUMANN_TOBESOLVED)
+                            panel_type=panel_type_i
                         )
                         
                         integrand = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
@@ -305,6 +309,11 @@ class RHSConstructor2d(AbstractRHSConstructor):
             # += 0.5I * f
             for local_I in range(self.num_of_panels_Dirichlet):
                 global_i = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_I)
+
+                panel_type_i = self._BEM_manager.get_panel_type(global_i)
+                if panel_type_i == int(CellFluxType.BOTH_TOBESOLVED):
+                    panel_type_i = int(CellFluxType.DIRICHLET_TOBESOLVED)
+                
                 for ii in range(basis_func_num_Dirichlet):
                     for jj in range(basis_func_num_Neumann):
                         basis_function_index_x = self._BEM_manager.get_basis_function_index(self._Q_Dirichlet, ii)
@@ -314,14 +323,14 @@ class RHSConstructor2d(AbstractRHSConstructor):
                             Q_=self._Q_Dirichlet,
                             local_panel_index=local_I,
                             basis_func_index=basis_function_index_x,
-                            panel_type=int(CellFluxType.DIRICHLET_TOBESOLVED)
+                            panel_type=panel_type_i
                         )
 
                         global_charge_j = self._BEM_manager.proj_from_local_panel_index_to_global_charge_index(
                             Q_=self._Q_Neumann,
                             local_panel_index=local_I,
                             basis_func_index=basis_function_index_y,
-                            panel_type=int(CellFluxType.DIRICHLET_TOBESOLVED)
+                            panel_type=panel_type_i
                         )
 
                         integrand = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
@@ -347,11 +356,11 @@ class RHSConstructor2d(AbstractRHSConstructor):
             # += K * g
             self._BEM_manager.double_layer.apply_K_dot_D_boundary(scope_type=scope_type, k=k, sqrt_n=sqrt_n, multiplier=multiplier)
             # -= V * f
-            self._BEM_manager.single_layer.apply_V_dot_F_boundary(scope_type=scope_type, k=k, sqrt_n=sqrt_n, multiplier=-multiplier)
+            self._BEM_manager.single_layer.apply_V_dot_N_boundary(scope_type=scope_type, k=k, sqrt_n=sqrt_n, multiplier=-multiplier)
 
         if self.M_Dirichlet > 0:
             # -= K' * f
-            self._BEM_manager.adj_double_layer.apply_K_dot_F_boundary(scope_type=scope_type, k=k, sqrt_n=sqrt_n, multiplier=-multiplier)
+            self._BEM_manager.adj_double_layer.apply_K_dot_N_boundary(scope_type=scope_type, k=k, sqrt_n=sqrt_n, multiplier=-multiplier)
             # -= W * g
             self._BEM_manager.hypersingular_layer.apply_W_dot_D_boundary(scope_type=scope_type, k=k, sqrt_n=sqrt_n, multiplier=-multiplier)
     
@@ -359,7 +368,7 @@ class RHSConstructor2d(AbstractRHSConstructor):
         self._rhs_vec.fill(0)
 
         if ti.static(self._BEM_manager._is_transmission <= 0):
-            scope_type = self._BEM_manager.get_scope_type()
+            scope_type = self._BEM_manager._scope_type
             if scope_type == int(ScopeType.INTERIOR):
                 self.multiply_identity_to_vector(multiplier=0.5)
             elif scope_type == int(ScopeType.EXTERIOR):

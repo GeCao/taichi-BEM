@@ -161,7 +161,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--Q_Neumann",
         type=int,
-        default=1,
+        default=0,
         choices=[0, 1],
         help="The degree of Neumann attached shape function",
     )

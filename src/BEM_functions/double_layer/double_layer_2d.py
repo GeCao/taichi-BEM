@@ -233,6 +233,14 @@ class DoubleLayer2d(AbstractDoubleLayer):
                     global_i = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_I)
                     global_j = self._BEM_manager.map_local_Dirichlet_index_to_panel_index(local_J)
 
+                    panel_type_i = self._BEM_manager.get_panel_type(global_i)
+                    panel_type_j = self._BEM_manager.get_panel_type(global_j)
+                    if panel_type_i == int(CellFluxType.BOTH_TOBESOLVED):
+                        panel_type_i = int(CellFluxType.NEUMANN_TOBESOLVED)
+                    
+                    if panel_type_j == int(CellFluxType.BOTH_TOBESOLVED):
+                        panel_type_j = int(CellFluxType.DIRICHLET_TOBESOLVED)
+
                     panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
                         
                     for ii in range(basis_func_num_Neumann):
@@ -244,13 +252,13 @@ class DoubleLayer2d(AbstractDoubleLayer):
                                 Q_=self._Q_Neumann,
                                 local_panel_index=local_I,
                                 basis_func_index=basis_function_index_x,
-                                panel_type=int(CellFluxType.NEUMANN_TOBESOLVED)
+                                panel_type=panel_type_i
                             )
                             local_charge_J = self._BEM_manager.proj_from_local_panel_index_to_local_charge_index(
                                 Q_=self._Q_Dirichlet,
                                 local_panel_index=local_J,
                                 basis_func_index=basis_function_index_y,
-                                panel_type=int(CellFluxType.DIRICHLET_TOBESOLVED)
+                                panel_type=panel_type_j
                             )
 
                             integrand = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)
@@ -293,6 +301,10 @@ class DoubleLayer2d(AbstractDoubleLayer):
                 global_i = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_I)
                 global_j = self._BEM_manager.map_local_Neumann_index_to_panel_index(local_J)
 
+                panel_type_i = self._BEM_manager.get_panel_type(global_i)
+                if panel_type_i == int(CellFluxType.BOTH_TOBESOLVED):
+                    panel_type_i = int(CellFluxType.NEUMANN_TOBESOLVED)
+
                 panels_relation = self._BEM_manager.get_panels_relation(global_i, global_j)
                 for ii in range(basis_func_num_Neumann):
                     for jj in range(basis_func_num_Dirichlet):
@@ -303,7 +315,7 @@ class DoubleLayer2d(AbstractDoubleLayer):
                             Q_=self._Q_Neumann,
                             local_panel_index=local_I,
                             basis_func_index=basis_function_index_x,
-                            panel_type=int(CellFluxType.NEUMANN_TOBESOLVED)
+                            panel_type=panel_type_i
                         )
 
                         integrand = ti.Vector([0.0 for i in range(self._n)], self._ti_dtype)

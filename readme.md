@@ -3,15 +3,31 @@
 ### ----------Analytical(Left)----Solved(Middle)----Difference(Right)
 
 ### Laplace Equation (2D)
+```command
+cd demo
+python demo_Laplace.py --dim 2 --boundary Dirichlet --object disk --GaussQR 5 --scope Interior
+```
 <img src="demo/Laplace_solved_Neumann_2d.png" height="270">
 
 ### Laplace Equation (3D)
+```command
+cd demo
+python demo_Laplace.py --dim 3 --boundary Dirichlet --object sphere --GaussQR 5 --scope Interior
+```
 <img src="demo/Laplace_solved_Neumann.png" height="270">
 
 ### Helmholtz Equation (3D)
+```command
+cd demo
+python demo_Helmholtz.py --dim 3 --boundary Dirichlet --object stanford_bunny --GaussQR 5 --scope Interior
+```
 <img src="demo/Helmholtz_solved_Neumann_stanford_bunny.png" height="270">
 
 ### Helmholtz Transmission Equation
+```command
+cd demo
+python demo_Helmholtz_Transmission.py --dim 3 --boundary Full --object sphere --GaussQR 5
+```
 <img src="demo/HelmholtzTransmission_solved_Full.png" height="270">
 
 ### Norm analysis (Still Working on! 👨‍💻)
@@ -40,11 +56,14 @@ python demo_Helmholtz_Transmission.py --boundary Full --k 5 --dim 3
 ```
 
 ### Parameters
-- boundary := [‘Dirichlet’, 'Neumann', 'Mix']
+- boundary := [‘Dirichlet’, 'Neumann', 'Mix', 'Full']
   - Dirichlet: If You want to set Dirichlet boundary and solve Neumann charges, pick this.
   - Neumann: If You want to set Neumann boundary and solve Dirichlet charges, pick this.
   - Mix: If You want to set Dirichlet boundary and solve Neumann charges for y > 0, and otherwise for y <= 0, pick this. If you want to self define your design of Dirichlet region and Neumann region, go to file [mesh_manager.py](src/managers/mesh_manager.py) and reach function [set_mixed_bvp](src/managers/mesh_manager.py), you might handle it with your own preference.
   - Full: This is only useful for Transmission problem, Both Neumann/Dirichlet boundary will be applied, and the corresponding boundary will be solved for interior.
+- scope := ['Interior', 'Exterior']
+  - Interior: Solve Interior problem, not applicable for transmission problem
+  - Exterior: Solve Exterior problem, not applicable for transmission problem
 - kernel := ['Laplace', 'Helmholtz']
   - Laplace: Solve Laplace equation
   - Helmholtz: Solve Helmholtz equation

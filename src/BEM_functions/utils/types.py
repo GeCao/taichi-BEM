@@ -4,7 +4,8 @@ from enum import Enum
 class CellFluxType(Enum):
     NEUMANN_TOBESOLVED = 0
     DIRICHLET_TOBESOLVED=1
-    BOTH_TOBESOLVED=2
+    MIX_NONRESOLVED=2
+    BOTH_TOBESOLVED=3
 
     def __int__(self):
         return self.value

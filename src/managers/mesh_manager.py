@@ -128,6 +128,8 @@ class MeshManager:
             np_vert_areas[np_faces[i]] += np_panel_areas[i // self._dim] / float(self._dim)
             np_vert_normals[np_faces[i]] += np_panel_normals[i // self._dim]
         
+        print("area = ", np_panel_areas.sum())
+        
         for i in range(self.num_of_vertices):
             np_vert_normals[i] = np_vert_normals[i] / np.linalg.norm(np_vert_normals[i])
             
@@ -303,12 +305,6 @@ class MeshManager:
                 num_of_Dirichlet_panels += 1
                 np_panel_types[i] = int(CellFluxType.DIRICHLET_TOBESOLVED)
         
-        if self.shape_func_degree_Neumann == 0:
-            self.N_Neumann = num_of_Neumann_panels
-        
-        if self.shape_func_degree_Dirichlet == 0:
-            self.M_Dirichlet = num_of_Dirichlet_panels
-        
         num_of_Neumann_vertices = 0
         num_of_Dirichlet_vertices = 0
         for i in range(self.num_of_panels):
@@ -329,6 +325,41 @@ class MeshManager:
                         np_map_global_Dirichlet_to_local[vert_idx] = num_of_Dirichlet_vertices
                         num_of_Dirichlet_vertices += 1
         
+        assert(num_of_Dirichlet_vertices + num_of_Neumann_vertices == self.num_of_vertices)
+        
+        # Do further checks: If a A-type panel has been surrounded by a B-type panel, you have to see this panel as B-type
+        for i in range(self.num_of_panels):
+            Dirichlet_sum = 0
+            Neumann_sum = 0
+            panel_type = np_panel_types[i]
+            for j in range(self._dim):
+                vert_idx = self.panels[self._dim * i + j]
+                if np_vertice_types[vert_idx] == int(VertAttachType.DIRICHLET_TOBESOLVED):
+                    Dirichlet_sum += 1
+                elif np_vertice_types[vert_idx] == int(VertAttachType.NEUMANN_TOBESOLVED):
+                    Neumann_sum += 1
+            
+            if Neumann_sum == self._dim and panel_type == int(CellFluxType.DIRICHLET_TOBESOLVED):
+                np_panel_types[i] = int(CellFluxType.NEUMANN_TOBESOLVED)
+                num_of_Dirichlet_panels -= 1
+                num_of_Neumann_panels += 1
+            elif Dirichlet_sum == self._dim and panel_type == int(CellFluxType.NEUMANN_TOBESOLVED):
+                np_panel_types[i] = int(CellFluxType.DIRICHLET_TOBESOLVED)
+                num_of_Dirichlet_panels += 1
+                num_of_Neumann_panels -= 1
+            elif Neumann_sum != self._dim and Dirichlet_sum != self._dim:
+                if panel_type == int(CellFluxType.NEUMANN_TOBESOLVED):
+                    num_of_Neumann_panels -= 1
+                elif panel_type == int(CellFluxType.DIRICHLET_TOBESOLVED):
+                    num_of_Dirichlet_panels -= 1
+                np_panel_types[i] = int(CellFluxType.MIX_NONRESOLVED)
+        
+        if self.shape_func_degree_Neumann == 0:
+            self.N_Neumann = num_of_Neumann_panels
+        
+        if self.shape_func_degree_Dirichlet == 0:
+            self.M_Dirichlet = num_of_Dirichlet_panels
+        
         if self.shape_func_degree_Neumann == 1:
             self.N_Neumann = num_of_Neumann_vertices
         
@@ -344,11 +375,11 @@ class MeshManager:
         self.vertice_types.from_numpy(np_vertice_types)
 
         np_hlp_indices = np.array([i for i in range(self.num_of_panels)], dtype=np.int32)
-        np_Dirichlet_index = np_hlp_indices[np_panel_types == int(CellFluxType.DIRICHLET_TOBESOLVED)]
-        np_Neumann_index = np_hlp_indices[np_panel_types == int(CellFluxType.NEUMANN_TOBESOLVED)]
+        np_Dirichlet_index = np_hlp_indices[np_panel_types != int(CellFluxType.NEUMANN_TOBESOLVED)]
+        np_Neumann_index = np_hlp_indices[np_panel_types != int(CellFluxType.DIRICHLET_TOBESOLVED)]
 
-        self.Dirichlet_index = ti.field(dtype=ti.i32, shape=(num_of_Dirichlet_panels,))
-        self.Neumann_index = ti.field(dtype=ti.i32, shape=(num_of_Neumann_panels,))
+        self.Dirichlet_index = ti.field(dtype=ti.i32, shape=(self.num_of_panels - num_of_Neumann_panels,))
+        self.Neumann_index = ti.field(dtype=ti.i32, shape=(self.num_of_panels - num_of_Dirichlet_panels,))
         self.Dirichlet_index.from_numpy(np_Dirichlet_index)
         self.Neumann_index.from_numpy(np_Neumann_index)
 
@@ -463,7 +494,7 @@ class MeshManager:
         return vertices, faces
     
     def load_analytical_sphere(self, r: float=1.0, rows: int=17, cols: int=17):
-        vertices = [[0.0, 0.0, -r]]
+        vertices = [[0.0, -r, 0.0]]
         panels = []
         for i in range(1, rows):
             theta = math.pi * i / rows
@@ -471,8 +502,8 @@ class MeshManager:
                 phi = 2.0 * math.pi * j / cols
                 vertices.append(
                     [r * math.cos(phi) * math.sin(theta),
-                     r * math.sin(phi) * math.sin(theta),
-                     -r * math.cos(theta)]
+                     -r * math.cos(theta),
+                     r * math.sin(phi) * math.sin(theta),]
                 )
                 if i == 1:
                     panels.append([0, 1 + (j + 1) % cols, 1 + j])
@@ -480,7 +511,7 @@ class MeshManager:
                     panels.append([1 + (i - 2) * cols + j, 1 + (i - 2) * cols + (j + 1) % cols, 1 + (i - 1) * cols + j])
                     panels.append([1 + (i - 2) * cols + (j + 1) % cols, 1 + (i - 1) * cols + (j + 1) % cols, 1 + (i - 1) * cols + j])
         
-        vertices.append([0.0, 0.0, r])
+        vertices.append([0.0, r, 0.0])
         for j in range(cols):
             panels.append([1 + (rows - 2) * cols + j, 1 + (rows - 2) * cols + (j + 1) % cols, 1 + (rows - 1) * cols])
         

@@ -249,7 +249,8 @@ class BEMManager:
 
         if Q_ == 0:
             # Constant on faces
-            result = local_panel_index
+            if panel_type != int(CellFluxType.MIX_NONRESOLVED):
+                result = local_panel_index
         elif Q_ == 1:
             # Linear on vertices
             global_panel_I = -1
@@ -257,13 +258,17 @@ class BEMManager:
             if panel_type == int(CellFluxType.NEUMANN_TOBESOLVED):
                 global_panel_I = self.map_local_Neumann_index_to_panel_index(local_panel_index)
                 global_vert_i = self.get_vertice_index_from_flat_panel_index(self._dim * global_panel_I + basis_func_index)
-                local_vert_i = self.map_global_vert_index_to_local_Neumann(global_vert_i)
-                result = local_vert_i
+                vert_type = self.get_vertice_type(global_vert_i)
+                if vert_type != int(VertAttachType.DIRICHLET_TOBESOLVED):
+                    local_vert_i = self.map_global_vert_index_to_local_Neumann(global_vert_i)
+                    result = local_vert_i
             elif panel_type == int(CellFluxType.DIRICHLET_TOBESOLVED):
                 global_panel_I = self.map_local_Dirichlet_index_to_panel_index(local_panel_index)
                 global_vert_i = self.get_vertice_index_from_flat_panel_index(self._dim * global_panel_I + basis_func_index)
-                local_vert_i = self.map_global_vert_index_to_local_Dirichlet(global_vert_i)
-                result = local_vert_i
+                vert_type = self.get_vertice_type(global_vert_i)
+                if vert_type != int(VertAttachType.NEUMANN_TOBESOLVED):
+                    local_vert_i = self.map_global_vert_index_to_local_Dirichlet(global_vert_i)
+                    result = local_vert_i
         
         return result
     
@@ -608,11 +613,11 @@ class BEMManager:
                 self._mat_A[I + self._Neumann_offset_i, J + self._Dirichlet_offset_j] += multiplier * self.double_layer._Kmat[I, J]
         
         if ti.static(self.M_Dirichlet * self.N_Neumann > 0):
-            # for I in range(self.N_Neumann):
-            #     for J in range(self.M_Dirichlet):
-            #         self._mat_A[J + self._Dirichlet_offset_i, I + self._Neumann_offset_j] += -multiplier * (-self.double_layer._Kmat[I, J])
-            for I, J in self.adj_double_layer._Kmat:
-                self._mat_A[I + self._Dirichlet_offset_i, J + self._Neumann_offset_j] += -multiplier * self.adj_double_layer._Kmat[I, J]
+            for I in range(self.N_Neumann):
+                for J in range(self.M_Dirichlet):
+                    self._mat_A[J + self._Dirichlet_offset_i, I + self._Neumann_offset_j] += -multiplier * (self.double_layer._Kmat[I, J])
+            # for I, J in self.adj_double_layer._Kmat:
+            #     self._mat_A[I + self._Dirichlet_offset_i, J + self._Neumann_offset_j] += -multiplier * self.adj_double_layer._Kmat[I, J]
         
         if ti.static(self.M_Dirichlet > 0):
             for I, J in self.hypersingular_layer._Wmat:
@@ -753,7 +758,6 @@ class BEMManager:
         
         if ti.static(self._show != int(VertAttachType.DIRICHLET_TOBESOLVED)):
             if ti.static(self.shape_func_degree_Neumann == 0):
-                print("Neumann num = ", self.num_of_panels_Neumann)
                 for I in range(self.num_of_panels_Neumann):
                     global_i = self.map_local_Neumann_index_to_panel_index(I)
                     area_x = self.get_panel_area(global_i)
@@ -785,7 +789,6 @@ class BEMManager:
                             self.solved[global_vert_idx_i] += self.raw_solved[Dirichlet_offset + I] * area_x / float(self._dim) / area_vert_i
                             self.analytical_solved[global_vert_idx_i] += self.raw_analytical_solved[Dirichlet_offset + I] * area_x / float(self._dim) / area_vert_i
             elif ti.static(self.shape_func_degree_Dirichlet == 1):
-                print("Dirichlet num = ", self.num_of_panels_Dirichlet)
                 for global_vert_i in range(self.num_of_vertices):
                     if self.get_vertice_type(global_vert_i) != int(VertAttachType.NEUMANN_TOBESOLVED):
                         local_I = self.map_global_vert_index_to_local_Dirichlet(global_vert_i)
@@ -948,7 +951,7 @@ class BEMManager:
             # ni scope
             self.matrix_layer_forward(k=self._k, sqrt_n=self._sqrt_ni, scope_type=int(ScopeType.INTERIOR))
 
-            self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=-1.0)  # Reduce P_PLUS_I
+            self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=1.0)  # Reduce P_PLUS_I
         else:
             self.matrix_layer_forward(k=self._k, scope_type=self._scope_type)
 
@@ -995,13 +998,17 @@ class BEMManager:
             
             torch_solved, _, _, _ = torch.linalg.lstsq(torch_mat, torch_rhs.unsqueeze(-1))
             torch_solved = torch_solved.squeeze(-1)
+
+            # torch_rhs = torch.transpose(torch_mat, 0, 1).matmul(torch.conj(torch_rhs))
+            # torch_mat = torch.transpose(torch_mat, 0, 1).matmul(torch.conj(torch_mat))
+            # torch_solved = torch.linalg.solve(torch_mat, torch_rhs)
         else:
             torch_solved = torch.linalg.solve(torch_mat, torch_rhs)
         
         # if ti.static(self._is_transmission > 0):
-        #     self._mat_A.fill(0)
-        #     self.matrix_layer_forward(k=self._k, sqrt_n=self._sqrt_no, scope_type=int(ScopeType.EXTERIOR))
-        #     self.assemble_matA(assemble_type=int(AssembleType.ADD_P_MINUS), multiplier=1.0)  # ADD P_MINUS_O
+        #     # self._mat_A.fill(0)
+        #     # self.matrix_layer_forward(k=self._k, sqrt_n=self._sqrt_no, scope_type=int(ScopeType.EXTERIOR))
+        #     # self.assemble_matA(assemble_type=int(AssembleType.ADD_P_MINUS), multiplier=1.0)  # ADD P_MINUS_O
         #     torch_mat_P = warp_tensor(self._mat_A.to_torch().to(device))
 
         #     torch_solved_norm = torch_solved.norm()
@@ -1013,7 +1020,6 @@ class BEMManager:
         #     print("solved_norm = ", torch_solved_norm)
         
         torch_solved = unwarp_tensor(torch_solved)
-
         self.raw_solved.from_torch(torch_solved)
 
     def kill(self):
