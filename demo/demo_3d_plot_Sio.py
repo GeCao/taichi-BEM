@@ -23,7 +23,7 @@ from src.managers import CoreManager
 ti.init(arch=ti.gpu, kernel_profiler=True)
 
 N = 10
-wave_numbers = [1.0 / N + i * 1.0 / N for i in range(10 * N)]
+wave_numbers = [0.0 + i * 1.0 / N for i in range(10 * N)]
 A1_inv_norms = [0.0 for i in range(len(wave_numbers))]
 A2_inv_norms = [0.0 for i in range(len(wave_numbers))]
 A1_augmented_inv_norms = [0.0 for i in range(len(wave_numbers))]
@@ -109,6 +109,7 @@ def plot_A1(save_path_, simulation_parameters, with_augmented: bool):
     plt.xlabel("Wavenumber k")
     plt.ylabel("Operator norm")
     plt.yscale("log")
+    plt.ylim(1, 100000)
     plt.title(simulation_parameters["object"] + r' transmission problem, $n_{i} = $' + str(simulation_parameters["n_i"]) + r', $n_{o} = $' + str(simulation_parameters["n_o"]))
     plt.plot(wave_numbers, A1_inv_norms, 'blue', label=r'$||A_{I}^{-1}||$')
     if with_augmented:
@@ -121,6 +122,7 @@ def plot_A2(save_path_, simulation_parameters, with_augmented: bool):
     plt.xlabel("Wavenumber k")
     plt.ylabel("Operator norm")
     plt.yscale("log")
+    plt.ylim(1, 100000)
     plt.title(simulation_parameters["object"] + r' transmission problem, $n_{i} = $' + str(simulation_parameters["n_i"]) + r', $n_{o} = $' + str(simulation_parameters["n_o"]))
     plt.plot(wave_numbers, A2_inv_norms, 'red', label=r'$||A_{II}^{-1}||$')
     if with_augmented:
@@ -133,6 +135,7 @@ def plot_A1A2(save_path_, simulation_parameters, with_augmented: bool = False):
     plt.xlabel("Wavenumber k")
     plt.ylabel("Operator norm")
     plt.yscale("log")
+    plt.ylim(1, 100000)
     plt.title(simulation_parameters["object"] + r' transmission problem, $n_{i} = $' + str(simulation_parameters["n_i"]) + r', $n_{o} = $' + str(simulation_parameters["n_o"]))
     if with_augmented:
         plt.plot(wave_numbers, A1_augmented_inv_norms, 'green', label=r'$|| \tilde A_{I}^{-1}||$')
@@ -167,8 +170,8 @@ def main(args):
 
     simulation_parameters["Q_Neumann"] = 1
     simulation_parameters["Q_Dirichlet"] = 1
-    with_augmented = False
-    save_path = "A2_plot_{}_{}_{}_GaussQR{}.png".format(simulation_parameters["Q_Neumann"], simulation_parameters["Q_Dirichlet"], simulation_parameters["object"], simulation_parameters["GaussQR"])
+    with_augmented = True
+    save_path = "A1_plot_{}_{}_{}_GaussQR{}.png".format(simulation_parameters["Q_Neumann"], simulation_parameters["Q_Dirichlet"], simulation_parameters["object"], simulation_parameters["GaussQR"])
     if with_augmented:
         save_path = "Augment_" + save_path
     
@@ -178,8 +181,8 @@ def main(args):
         save_path = "NonPhysical_" + save_path
     
     save_path = os.path.join(demo_path, "data", save_path)
-    compute_A2_inv_list(simulation_parameters, with_augmented=with_augmented)
-    plot_A2(save_path, simulation_parameters, with_augmented=with_augmented)
+    compute_A1_inv_list(simulation_parameters, with_augmented=with_augmented)
+    plot_A1(save_path, simulation_parameters, with_augmented=with_augmented)
 
     # simulation_parameters["Q_Neumann"] = 1
     # simulation_parameters["Q_Dirichlet"] = 1

@@ -34,11 +34,18 @@ python demo_Helmholtz_Transmission.py --dim 3 --boundary Full --object sphere --
 * The sample step of wave number is 1/30, which implies for wavenumbers between [16, 18], 60 points are sampled.
 * Precious matters, float64 shows more stability than float32 for operator AI (Somehow not very obvious for operator AII).
 
-### The norm of A (Left) and Augmented A (Right)
+### The norm of A & Augmented A of sphere
 
-<img src="demo/Physical_A1A2_plot_1_1.png" height="192"> <img src="demo/Physical_Augment_A1A2_plot_1_1.png" height="192">
+<img src="demo/Physical_Augment_A1_plot_1_1_sphere_GaussQR4.png" height="192"> <img src="demo/Physical_Augment_A2_plot_1_1_sphere_GaussQR4.png" height="192">
 
-<img src="demo/NonPhysical_A1A2_plot_1_1.png" height="192"> <img src="demo/NonPhysical_Augment_A1A2_plot_1_1.png" height="192">
+<img src="demo/NonPhysical_Augment_A1_plot_1_1_sphere_GaussQR4.png" height="192"> <img src="demo/NonPhysical_Augment_A2_plot_1_1_sphere_GaussQR4.png" height="192">
+
+
+### As well as the norm of A & Augmented A of stanford bunny
+
+<img src="demo/Physical_Augment_A1_plot_1_1_stanford_bunny_GaussQR4.png" height="192"> <img src="demo/Physical_Augment_A2_plot_1_1_stanford_bunny_GaussQR4.png" height="192">
+
+<img src="demo/NonPhysical_Augment_A1_plot_1_1_stanford_bunny_GaussQR4.png" height="192"> <img src="demo/NonPhysical_Augment_A2_plot_1_1_stanford_bunny_GaussQR4.png" height="192">
 
 ### How to run the code
 

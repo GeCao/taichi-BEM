@@ -67,7 +67,7 @@ class RHSConstructor3d(AbstractRHSConstructor):
                         x += self._BEM_manager.get_vertice_from_flat_panel_index(self._dim * global_i + ii) / float(self._dim)
                     
                     normal_x_int = self._BEM_manager.get_panel_normal(global_i, scope_type=int(ScopeType.INTERIOR))
-                    normal_x_ext = -normal_x_int
+                    normal_x_ext = self._BEM_manager.get_panel_normal(global_i, scope_type=int(ScopeType.EXTERIOR))
                     
                     self._Neumann_boundary[global_i] += self.analytical_function_Neumann(x, normal_x_int, sqrt_ni)
                     self._f_boundary[Neumann_offset_j + local_I] += (
@@ -81,7 +81,7 @@ class RHSConstructor3d(AbstractRHSConstructor):
                         local_vert_idx_i = self._BEM_manager.map_global_vert_index_to_local_Neumann(global_vert_idx_i)
                         x = self._BEM_manager.get_vertice(global_vert_idx_i)
                         normal_x_int = self._BEM_manager.get_vert_normal(global_vert_idx_i, scope_type=int(ScopeType.INTERIOR))
-                        normal_x_ext = -normal_x_int
+                        normal_x_ext = self._BEM_manager.get_vert_normal(global_vert_idx_i, scope_type=int(ScopeType.EXTERIOR))
 
                         self._Neumann_boundary[global_vert_idx_i] += self.analytical_function_Neumann(x, normal_x_int, sqrt_ni)
                         self._f_boundary[Neumann_offset_j + local_vert_idx_i] += (

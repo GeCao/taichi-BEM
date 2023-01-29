@@ -74,6 +74,9 @@ class BEMManager:
         elif self._simulation_parameters["scope"] == "Exterior":
             self._scope_type = int(ScopeType.EXTERIOR)
 
+        self._L1_inv_H = None
+        self._L2_inv_H = None
+
         self.initialized = False
 
     def initialization(self, analytical_function_Dirichlet, analytical_function_Neumann):
@@ -103,7 +106,8 @@ class BEMManager:
         self._Dirichlet_offset_j = 0
         self._Neumann_offset_j = 0
 
-        self._Dirichlet_offset_i = self.N_Neumann
+        self._Neumann_offset_i = self.M_Dirichlet
+        # self._Dirichlet_offset_i = self.N_Neumann
         self._Neumann_offset_j = self.M_Dirichlet
 
         self.analytical_function_Dirichlet = analytical_function_Dirichlet
@@ -325,16 +329,16 @@ class BEMManager:
     @ti.func
     def get_panel_normal(self, panel_normal_index, scope_type: int):
         panel_normal = self._core_manager._mesh_manager.get_panel_normals()[panel_normal_index]
-        if scope_type == int(ScopeType.EXTERIOR):
-            panel_normal = -panel_normal
+        # if scope_type == int(ScopeType.EXTERIOR):
+        #     panel_normal = -panel_normal
         
         return panel_normal
 
     @ti.func
     def get_vert_normal(self, vert_index, scope_type: int):
         vert_normal = self._core_manager._mesh_manager.get_vert_normals()[vert_index]
-        if scope_type == int(ScopeType.EXTERIOR):
-            vert_normal = -vert_normal
+        # if scope_type == int(ScopeType.EXTERIOR):
+        #     vert_normal = -vert_normal
         
         return vert_normal
     
@@ -843,30 +847,77 @@ class BEMManager:
         self.rhs_constructor.forward(scope_type=scope_type, k=k, sqrt_n=sqrt_n)
         self._log_manager.InfoLog("Construct all RHS Layers Done")
     
-    def compute_norm(self, A: torch.Tensor):
-        # Do your svd firstly
-        S = torch.linalg.svdvals(A)
-        A_norm = S.max()
-
-        return A_norm.item()
+    def get_V_part(self, torch_input: torch.Tensor):
+        return torch_input[self._Neumann_offset_i: self._Neumann_offset_i + self.N_Neumann, self._Neumann_offset_j: self._Neumann_offset_j + self.N_Neumann]
     
-    def compute_inv_norm(self, A: torch.Tensor):
-        # Do your svd firstly
-        # V = A[0: self._Dirichlet_offset_i, self._Neumann_offset_j: ]  # V only
-        # W = A[self._Dirichlet_offset_i: (self.N_Neumann + self.M_Dirichlet), 0: self._Neumann_offset_j ]  # W only
-        # K = A[0: self._Dirichlet_offset_i, 0: self._Neumann_offset_j]  # K only
-        # KK = A[self._Dirichlet_offset_i: (self.N_Neumann + self.M_Dirichlet), self._Neumann_offset_j:]  # K' only
-        # S_V = torch.linalg.svdvals(V)
-        # S_W = torch.linalg.svdvals(W)
-        # S_K = torch.linalg.svdvals(K)
-        # S_KK = torch.linalg.svdvals(KK)
-        # A_norm = 1.0 / torch.cat((S_W, S_K, S_KK), dim=-1).min()
+    def get_K_part(self, torch_input: torch.Tensor):
+        return torch_input[self._Neumann_offset_i: self._Neumann_offset_i + self.N_Neumann, self._Dirichlet_offset_j: self._Dirichlet_offset_j + self.M_Dirichlet]
+    
+    def get_adj_K_part(self, torch_input: torch.Tensor):
+        return torch_input[self._Dirichlet_offset_i: self._Dirichlet_offset_i + self.M_Dirichlet, self._Neumann_offset_j: self._Neumann_offset_j + self.N_Neumann]
+    
+    def get_W_part(self, torch_input: torch.Tensor):
+        return torch_input[self._Dirichlet_offset_i: self._Dirichlet_offset_i + self.M_Dirichlet, self._Dirichlet_offset_j: self._Dirichlet_offset_j + self.M_Dirichlet]
+    
+    def set_V_part(self, old_tensor: torch.Tensor, new_tensor: torch.Tensor):
+        old_tensor[self._Neumann_offset_i: self._Neumann_offset_i + self.N_Neumann, self._Neumann_offset_j: self._Neumann_offset_j + self.N_Neumann] = new_tensor
+    
+    def set_K_part(self, old_tensor: torch.Tensor, new_tensor: torch.Tensor):
+        old_tensor[self._Neumann_offset_i: self._Neumann_offset_i + self.N_Neumann, self._Dirichlet_offset_j: self._Dirichlet_offset_j + self.M_Dirichlet] = new_tensor
+    
+    def set_adj_K_part(self, old_tensor: torch.Tensor, new_tensor: torch.Tensor):
+        old_tensor[self._Dirichlet_offset_i: self._Dirichlet_offset_i + self.M_Dirichlet, self._Neumann_offset_j: self._Neumann_offset_j + self.N_Neumann] = new_tensor
+    
+    def set_W_part(self, old_tensor: torch.Tensor, new_tensor: torch.Tensor):
+        old_tensor[self._Dirichlet_offset_i: self._Dirichlet_offset_i + self.M_Dirichlet, self._Dirichlet_offset_j: self._Dirichlet_offset_j + self.M_Dirichlet] = new_tensor
+    
+    def compute_inv_norm(self, A: torch.Tensor, A_type: int):
+        if self._L1_inv_H is None and A_type == 1:
+            # k = 0
+            MV = torch.zeros_like(A)
+            self.set_W_part(old_tensor=MV, new_tensor=self.get_W_part(A))
+            self.set_V_part(old_tensor=MV, new_tensor=self.get_V_part(A))
+            MV = (MV + MV.T) / 2.0
+            self._L1_inv_H = torch.linalg.inv(
+                torch.linalg.cholesky(MV, upper=False)
+            ).T.conj()
 
-        S = torch.linalg.svdvals(A)
-        S_min = S.min()
-        A_norm = (1.0 / S).max().item()
+            self._L2_inv_H = None
+        elif self._L2_inv_H is None and A_type == 2:
+            # k = 0
+            MV = torch.block_diag(
+                self.get_adj_K_part(A),
+                self.get_K_part(A)
+            )
+            self._L2_inv_H = torch.linalg.inv(
+                torch.linalg.cholesky(MV, upper=False)
+            ).T.conj()
 
-        # sorted_S_inv = torch.sort(1.0 / S.flatten(), descending=True)[0]
+            self._L1_inv_H = None
+        
+        if A_type == 1:
+            A = A @ self._L1_inv_H
+            if A.shape[0] == self.N_Neumann + self.M_Dirichlet:
+                # General
+                A = self._L1_inv_H.T.conj() @ A
+            elif A.shape[0] == 2 * (self.N_Neumann + self.M_Dirichlet):
+                # Augmented
+                A = torch.block_diag(self._L1_inv_H.T.conj(), self._L1_inv_H.T.conj()) @ A
+            else:
+                raise NotImplementedError("We only support Non-Augmentd matrix and Augmented Matrix for Norm analysis")
+        elif A_type == 2:
+            A = A @ self._L2_inv_H
+            if A.shape[0] == self.N_Neumann + self.M_Dirichlet:
+                # General
+                A = self._L2_inv_H.T.conj() @ A
+            elif A.shape[0] == 2 * (self.N_Neumann + self.M_Dirichlet):
+                # Augmented
+                A = torch.block_diag(self._L2_inv_H.T.conj(), self._L2_inv_H.T.conj()) @ A
+            else:
+                raise NotImplementedError("We only support Non-Augmentd matrix and Augmented Matrix for Norm analysis")
+         
+        S_val = torch.linalg.svdvals(A, driver='gesvd')
+        A_norm = (1.0 / S_val).max().item()
 
         return A_norm
     
@@ -879,9 +930,8 @@ class BEMManager:
         self.assemble_matA(assemble_type=int(AssembleType.ADD_P_PLUS), multiplier=-1.0)  # Reduce P_PLUS_I
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
         torch_mat_A1 = warp_tensor(self._mat_A.to_torch().to(device))
-        mat_A_inv_norm1 = self.compute_inv_norm(torch_mat_A1)
+        mat_A_inv_norm1 = self.compute_inv_norm(torch_mat_A1, A_type=1)
 
         return mat_A_inv_norm1
     
@@ -895,7 +945,7 @@ class BEMManager:
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         torch_mat_A2 = warp_tensor(self._mat_A.to_torch().to(device))
-        mat_A_inv_norm2 = self.compute_inv_norm(torch_mat_A2)
+        mat_A_inv_norm2 = self.compute_inv_norm(torch_mat_A2, A_type=2)
 
         return mat_A_inv_norm2
     
@@ -914,7 +964,7 @@ class BEMManager:
             (torch_mat_A, torch_mat_P),
             0
         )
-        mat_A_norm_inv = self.compute_inv_norm(torch_augmented_A)
+        mat_A_norm_inv = self.compute_inv_norm(torch_augmented_A, A_type=1)
 
         return mat_A_norm_inv
     
@@ -933,7 +983,7 @@ class BEMManager:
             (torch_mat_A, torch_mat_P),
             0
         )
-        mat_A_norm_inv = self.compute_inv_norm(torch_augmented_A)
+        mat_A_norm_inv = self.compute_inv_norm(torch_augmented_A, A_type=2)
 
         return mat_A_norm_inv
     
